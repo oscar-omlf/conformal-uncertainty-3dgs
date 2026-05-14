@@ -20,7 +20,7 @@ if [ -z "${SCENE:-}" ]; then
     exit 1
 fi
 
-OUTPUT_BASE="${OUTPUT_BASE:-/scratch-shared/$USER/output_fullwidth}"
+OUTPUT_BASE="${OUTPUT_BASE:-/scratch-shared/$USER/output}"
 OUT="${OUT:-$OUTPUT_BASE/$(basename "$SCENE")}"
 ITERS="${ITERS:-30000}"
 ALPHA="${ALPHA:-0.1}"
@@ -44,6 +44,7 @@ set -u
 
 SPLIT_DIR="$OUT/splits"
 RUN_DIR="$OUT"
+OUTPUT_ROOT="$(dirname "$OUT")"
 
 mkdir -p "$OUT" "$SPLIT_DIR"
 
@@ -79,20 +80,20 @@ python train.py -s "$SCENE" -m "$OUT" --split_dir "$SPLIT_DIR" --iterations "$IT
 
 # 3. Render color/depth raw sigma artifacts
 echo "[3/8] Rendering color sigma"
-python scripts/render_color.py -m "$OUT" --split_dir "$SPLIT_DIR" --skip_train
+python scripts/render_color.py -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train
 
 echo "[4/8] Rendering depth sigma"
-python scripts/render_depth.py -m "$OUT" --split_dir "$SPLIT_DIR" --skip_train
+python scripts/render_depth.py -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train
 
 # 4. Top-K entropy
 echo "[5/8] Rendering entropy (top-K weights)"
-python scripts/render_entropy.py -m "$OUT" --split_dir "$SPLIT_DIR" --skip_train --top_k 4
+python scripts/render_entropy.py -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train --top_k 4
 
 # 5. Fisher sensitivity (compute then render)
 echo "[6/8] Computing Fisher sensitivity (PUP3DGS)"
 python scripts/compute_sensitivity.py -m "$OUT"
 python scripts/render_per_gaussian_scalar.py \
-    -m "$OUT" --split_dir "$SPLIT_DIR" --skip_train \
+    -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
     --modality sensitivity \
     --scores_path "$OUT/uncertainty/fishers.npz" \
     --score_key fishers_log_dets \
@@ -102,7 +103,7 @@ python scripts/render_per_gaussian_scalar.py \
 echo "[7/8] Computing visibility (4DGS-W)"
 python scripts/compute_visibility.py -m "$OUT"
 python scripts/render_per_gaussian_scalar.py \
-    -m "$OUT" --split_dir "$SPLIT_DIR" --skip_train \
+    -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
     --modality visibility \
     --scores_path "$OUT/uncertainty/visibility.npz" \
     --score_key uncertainty_log

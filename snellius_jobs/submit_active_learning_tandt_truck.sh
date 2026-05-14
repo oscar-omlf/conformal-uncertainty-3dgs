@@ -11,7 +11,7 @@ TEST="${TEST:-20%}"
 ADD_K="${ADD_K:-5}"
 METHODS="${METHODS:-conformal_color conformal_visibility conformal_sensitivity raw_sensitivity}"
 SCENE="${SCENE:-tandt/truck}"
-OUTPUT_BASE="${OUTPUT_BASE:-/scratch-shared/$USER/output_fullwidth}"
+OUTPUT_BASE="${OUTPUT_BASE:-/scratch-shared/$USER/output}"
 AL_ROOT="${AL_ROOT:-$OUTPUT_BASE/active_learning/tandt_truck}"
 
 for method in $METHODS; do

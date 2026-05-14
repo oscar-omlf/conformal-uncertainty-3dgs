@@ -15,7 +15,7 @@
 #   SCENE=/path/to/scene
 #
 # Optional:
-#   AL_ROOT=/scratch-shared/$USER/output_fullwidth/active_learning/<scene_slug>
+#   AL_ROOT=/scratch-shared/$USER/output/active_learning/<scene_slug>
 #   METHOD=combined          # random|uniform|fisher|pup|sensitivity|color|visibility|combined
 #   SEED=0
 #   ROUNDS=3                # round_00 plus this many acquisition updates
@@ -98,7 +98,7 @@ case "$PRESET" in
         ;;
 esac
 TARGET_COVERAGE="$(python -c "print(1.0 - float('${ALPHA}'))")"
-OUTPUT_BASE="${OUTPUT_BASE:-/scratch-shared/$USER/output_fullwidth}"
+OUTPUT_BASE="${OUTPUT_BASE:-/scratch-shared/$USER/output}"
 AL_ROOT="${AL_ROOT:-$OUTPUT_BASE/active_learning/$(basename "$SCENE")}"
 RUN_ROOT="$AL_ROOT/$METHOD/seed_${SEED}"
 NEED_COLOR=0

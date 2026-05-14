@@ -11,7 +11,7 @@ SEED="${SEED:-0}"
 CALIB="${CALIB:-10%}"
 METHODS="${METHODS:-uniform conformal_color conformal_visibility conformal_sensitivity raw_sensitivity}"
 SCENE="${SCENE:-mipnerf/${DATASET_NAME}}"
-OUTPUT_BASE="${OUTPUT_BASE:-/scratch-shared/$USER/output_fullwidth}"
+OUTPUT_BASE="${OUTPUT_BASE:-/scratch-shared/$USER/output}"
 AL_ROOT="${AL_ROOT:-$OUTPUT_BASE/active_learning_mipnerf/${DATASET_NAME}_popgs10}"
 
 for method in $METHODS; do

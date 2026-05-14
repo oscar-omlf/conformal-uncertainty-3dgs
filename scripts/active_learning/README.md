@@ -8,7 +8,7 @@ On Snellius, the submit scripts default to scratch storage to avoid home/project
 quota issues:
 
 ```text
-OUTPUT_BASE=/scratch-shared/$USER/output_fullwidth
+OUTPUT_BASE=/scratch-shared/$USER/output
 ```
 
 You can override this per run:
@@ -104,16 +104,15 @@ remaining  -> candidate.txt
 For generic AL runs, the initial train views are random by default. For the
 POp-GS-style MipNeRF presets, `INIT_METHOD=random_fps` is used: the first
 initial view is random from the non-test pool, then the remaining initial views
-are chosen by farthest-point sampling over COLMAP camera centers. This matches
-the FisherRF/POp-GS spirit more closely than choosing all initial views at
-random. `INIT_METHOD=first_fps` is also available if you want the FisherRF-code
-variant that starts from the first sorted non-test view.
+are chosen by farthest-point sampling over COLMAP camera centers.
+`INIT_METHOD=first_fps` is also available if you want the FisherRF-code variant
+that starts from the first sorted non-test view.
 
 For the POp-GS-style presets:
 
 ```text
-popgs10: INIT_TRAIN=2, INIT_METHOD=random_fps, ADD_K=1, final train views=10
-popgs20: INIT_TRAIN=4, INIT_METHOD=random_fps, ADD_K=1, final train views=20
+popgs10: INIT_TRAIN=2, INIT_METHOD=random_fps, ADD_K=1, MIN_INDEX_GAP=4, final train views=10
+popgs20: INIT_TRAIN=4, INIT_METHOD=random_fps, ADD_K=1, MIN_INDEX_GAP=4, final train views=20
 ```
 
 ## Acquisition Methods
@@ -172,6 +171,11 @@ candidate_score = mean(top 10% of 2 * q_hat * u_norm_candidate over valid foregr
 ```
 
 Candidate GT is not used for acquisition.
+
+For MipNeRF/POp-GS presets, acquisition also applies a small sorted-image
+anti-clustering rule: candidates within `MIN_INDEX_GAP=4` of any current train
+view or newly selected view are skipped when possible. Set `MIN_INDEX_GAP=0` to
+disable it, or use `INDEX_PENALTY` for a softer proximity penalty.
 
 For combined methods, each available signal is min-max normalized across the
 candidate views for that round:
@@ -237,8 +241,8 @@ raw_sensitivity
 The final report files are:
 
 ```text
-/scratch-shared/$USER/output_fullwidth/active_learning_mipnerf/<dataset>_popgs10/final_metrics.md
-/scratch-shared/$USER/output_fullwidth/active_learning_mipnerf/<dataset>_popgs20/final_metrics.md
+/scratch-shared/$USER/output/active_learning_mipnerf/<dataset>_popgs10/final_metrics.md
+/scratch-shared/$USER/output/active_learning_mipnerf/<dataset>_popgs20/final_metrics.md
 ```
 
 The main diagrams are:
@@ -271,7 +275,7 @@ Run one scene and one method manually:
 
 ```bash
 SCENE=tandt/train \
-AL_ROOT=/scratch-shared/$USER/output_fullwidth/active_learning/tandt_train \
+AL_ROOT=/scratch-shared/$USER/output/active_learning/tandt_train \
 METHOD=conformal_color \
 SEED=0 \
 ROUNDS=3 \
@@ -291,7 +295,7 @@ added that uses them.
 Per method/seed/round:
 
 ```text
-/scratch-shared/$USER/output_fullwidth/active_learning/<scene>/<method>/seed_<seed>/round_<rr>/
+/scratch-shared/$USER/output/active_learning/<scene>/<method>/seed_<seed>/round_<rr>/
   splits/
   results.md
   results.json
@@ -304,9 +308,9 @@ Per method/seed/round:
 Scene-level summaries:
 
 ```text
-/scratch-shared/$USER/output_fullwidth/active_learning/<scene>/active_learning_summary.csv
-/scratch-shared/$USER/output_fullwidth/active_learning/<scene>/active_learning_summary.md
-/scratch-shared/$USER/output_fullwidth/active_learning/<scene>/figures/
+/scratch-shared/$USER/output/active_learning/<scene>/active_learning_summary.csv
+/scratch-shared/$USER/output/active_learning/<scene>/active_learning_summary.md
+/scratch-shared/$USER/output/active_learning/<scene>/figures/
 ```
 
 The figures include PSNR/SSIM/LPIPS learning curves and per-modality
