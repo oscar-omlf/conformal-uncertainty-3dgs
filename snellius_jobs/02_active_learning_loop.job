@@ -24,6 +24,8 @@
 #   CALIB=10%
 #   TEST=20%
 #   ADD_K=5
+#   MIN_INDEX_GAP=0         # avoid selecting candidates within this sorted-image distance of train/selected views
+#   INDEX_PENALTY=0.0       # optional soft score penalty by sorted-image proximity
 #   ITERS=7000
 #   ITERS_MODE=fixed        # fixed|popgs
 #   PRESET=                # popgs10|popgs20
@@ -42,6 +44,7 @@ INIT_METHOD_WAS_SET="${INIT_METHOD+x}"
 CALIB_WAS_SET="${CALIB+x}"
 TEST_WAS_SET="${TEST+x}"
 ADD_K_WAS_SET="${ADD_K+x}"
+MIN_INDEX_GAP_WAS_SET="${MIN_INDEX_GAP+x}"
 ITERS_MODE_WAS_SET="${ITERS_MODE+x}"
 FINAL_ITERS_WAS_SET="${FINAL_ITERS+x}"
 TEST_MODE_WAS_SET="${TEST_MODE+x}"
@@ -53,6 +56,8 @@ INIT_METHOD="${INIT_METHOD:-random}"
 CALIB="${CALIB:-10%}"
 TEST="${TEST:-20%}"
 ADD_K="${ADD_K:-5}"
+MIN_INDEX_GAP="${MIN_INDEX_GAP:-0}"
+INDEX_PENALTY="${INDEX_PENALTY:-0.0}"
 ITERS="${ITERS:-7000}"
 ITERS_MODE="${ITERS_MODE:-fixed}"
 PRESET="${PRESET:-}"
@@ -68,6 +73,7 @@ case "$PRESET" in
         if [ -z "$TEST_WAS_SET" ]; then TEST="0"; fi
         if [ -z "$TEST_MODE_WAS_SET" ]; then TEST_MODE="llffhold"; fi
         if [ -z "$ADD_K_WAS_SET" ]; then ADD_K="1"; fi
+        if [ -z "$MIN_INDEX_GAP_WAS_SET" ]; then MIN_INDEX_GAP="4"; fi
         if [ -z "$ROUNDS_WAS_SET" ]; then ROUNDS="8"; fi
         if [ -z "$ITERS_MODE_WAS_SET" ]; then ITERS_MODE="popgs"; fi
         if [ -z "$FINAL_ITERS_WAS_SET" ]; then FINAL_ITERS="10000"; fi
@@ -79,6 +85,7 @@ case "$PRESET" in
         if [ -z "$TEST_WAS_SET" ]; then TEST="0"; fi
         if [ -z "$TEST_MODE_WAS_SET" ]; then TEST_MODE="llffhold"; fi
         if [ -z "$ADD_K_WAS_SET" ]; then ADD_K="1"; fi
+        if [ -z "$MIN_INDEX_GAP_WAS_SET" ]; then MIN_INDEX_GAP="4"; fi
         if [ -z "$ROUNDS_WAS_SET" ]; then ROUNDS="16"; fi
         if [ -z "$ITERS_MODE_WAS_SET" ]; then ITERS_MODE="popgs"; fi
         if [ -z "$FINAL_ITERS_WAS_SET" ]; then FINAL_ITERS="21000"; fi
@@ -152,6 +159,8 @@ echo "Init method: $INIT_METHOD"
 echo "Calib/Test : $CALIB / $TEST"
 echo "Test mode  : $TEST_MODE"
 echo "Add K      : $ADD_K"
+echo "Index gap  : $MIN_INDEX_GAP"
+echo "Idx penalty: $INDEX_PENALTY"
 echo "Iterations : $ITERS"
 echo "Iter mode  : $ITERS_MODE final=${FINAL_ITERS:-none}"
 echo "Alpha      : $ALPHA"
@@ -304,6 +313,8 @@ for ROUND in $(seq 0 "$ROUNDS"); do
                 --output_dir "$NEXT_SPLITS" \
                 --method "$METHOD" \
                 --add_k "$ADD_K" \
+                --min_index_gap "$MIN_INDEX_GAP" \
+                --index_penalty "$INDEX_PENALTY" \
                 --round "$ROUND" \
                 --seed "$SEED"
         else
@@ -313,6 +324,8 @@ for ROUND in $(seq 0 "$ROUNDS"); do
                 --method "$METHOD" \
                 --rankings_path "$RANKINGS" \
                 --add_k "$ADD_K" \
+                --min_index_gap "$MIN_INDEX_GAP" \
+                --index_penalty "$INDEX_PENALTY" \
                 --round "$ROUND" \
                 --seed "$SEED"
         fi

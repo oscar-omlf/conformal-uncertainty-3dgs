@@ -209,7 +209,49 @@ def load_scores(rankings_path, method):
     rankings = payload.get("rankings", {})
     if key not in rankings:
         raise KeyError(f"{key} not found in {rankings_path}. Available: {sorted(rankings)}")
-    return [entry["frame"] for entry in rankings[key]]
+    return [(entry["frame"], float(entry.get("score", 0.0))) for entry in rankings[key]]
+
+
+def image_index_lookup(names):
+    return {name: idx for idx, name in enumerate(sorted(names))}
+
+
+def min_index_distance(name, reference_names, index_by_name):
+    if name not in index_by_name or not reference_names:
+        return None
+    idx = index_by_name[name]
+    distances = [abs(idx - index_by_name[ref]) for ref in reference_names if ref in index_by_name]
+    return min(distances) if distances else None
+
+
+def select_diverse_ranked(ranked, candidate, train, k, min_gap, penalty):
+    candidate_set = set(candidate)
+    all_names = list(dict.fromkeys(train + candidate + [name for name, _ in ranked]))
+    index_by_name = image_index_lookup(all_names)
+    selected = []
+    selected_set = set()
+    reference = list(train)
+    ranked_candidates = [(name, score) for name, score in ranked if name in candidate_set]
+
+    while len(selected) < k and ranked_candidates:
+        viable = []
+        relaxed = []
+        for name, score in ranked_candidates:
+            distance = min_index_distance(name, reference, index_by_name)
+            adjusted = score
+            if penalty > 0.0 and distance is not None:
+                adjusted = score * (1.0 - penalty / (distance + 1.0))
+            item = (adjusted, score, distance if distance is not None else 10**9, name)
+            relaxed.append(item)
+            if min_gap <= 0 or distance is None or distance > min_gap:
+                viable.append(item)
+        pool = viable if viable else relaxed
+        _, _, _, chosen = max(pool, key=lambda item: (item[0], item[1], item[2]))
+        selected.append(chosen)
+        selected_set.add(chosen)
+        reference.append(chosen)
+        ranked_candidates = [(name, score) for name, score in ranked_candidates if name not in selected_set]
+    return selected
 
 
 def choose_candidates(args, candidate):
@@ -227,13 +269,14 @@ def choose_candidates(args, candidate):
         return [candidate[int(round(idx))] for idx in indices]
 
     ranked_frames = load_scores(Path(args.rankings_path), method)
-    candidate_set = set(candidate)
-    selected = []
-    for frame in ranked_frames:
-        if frame in candidate_set:
-            selected.append(frame)
-        if len(selected) == k:
-            break
+    selected = select_diverse_ranked(
+        ranked_frames,
+        candidate,
+        args.train,
+        k,
+        args.min_index_gap,
+        args.index_penalty,
+    )
     if len(selected) < k:
         selected_set = set(selected)
         selected.extend([name for name in candidate if name not in selected_set][: k - len(selected)])
@@ -248,6 +291,7 @@ def update_splits(args):
     test = read_names(input_dir / "test.txt")
     candidate = read_names(input_dir / "candidate.txt")
 
+    args.train = train
     selected = choose_candidates(args, candidate)
     selected_set = set(selected)
     next_train = train + selected
@@ -269,6 +313,8 @@ def update_splits(args):
         "round": args.round,
         "seed": args.seed,
         "add_k": args.add_k,
+        "min_index_gap": args.min_index_gap,
+        "index_penalty": args.index_penalty,
         "rankings_path": str(Path(args.rankings_path).resolve()) if args.rankings_path else "",
         "selected": selected,
         **split_map,
@@ -324,6 +370,8 @@ def main():
     )
     update.add_argument("--rankings_path", default="")
     update.add_argument("--add_k", type=int, default=5)
+    update.add_argument("--min_index_gap", type=int, default=0)
+    update.add_argument("--index_penalty", type=float, default=0.0)
     update.add_argument("--round", type=int, required=True)
     update.add_argument("--seed", type=int, default=0)
     update.set_defaults(func=update_splits)
