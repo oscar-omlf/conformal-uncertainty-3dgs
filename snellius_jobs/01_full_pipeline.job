@@ -68,29 +68,29 @@ echo "================================================================"
 # fi
 
 # 1. Round-robin train/calib/test split
-echo "[1/8] Preparing split manifests"
+echo "[1/9] Preparing split manifests"
 python scripts/prepare_round_robin_split.py \
     --source_path "$SCENE" \
     --images images \
     --output_dir "$SPLIT_DIR"
 
 # 2. Train 3DGS on train.txt only
-echo "[2/8] Training 3DGS"
+echo "[2/9] Training 3DGS"
 python train.py -s "$SCENE" -m "$OUT" --split_dir "$SPLIT_DIR" --iterations "$ITERS" --eval
 
 # 3. Render color/depth raw sigma artifacts
-echo "[3/8] Rendering color sigma"
+echo "[3/9] Rendering color sigma"
 python scripts/render_color.py -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train
 
-echo "[4/8] Rendering depth sigma"
+echo "[4/9] Rendering depth sigma"
 python scripts/render_depth.py -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train
 
 # 4. Top-K entropy
-echo "[5/8] Rendering entropy (top-K weights)"
+echo "[5/9] Rendering entropy (top-K weights)"
 python scripts/render_entropy.py -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train --top_k 4
 
 # 5. Fisher sensitivity (compute then render)
-echo "[6/8] Computing Fisher sensitivity (PUP3DGS)"
+echo "[6/9] Computing Fisher sensitivity (PUP3DGS)"
 python scripts/compute_sensitivity.py -m "$OUT"
 python scripts/render_per_gaussian_scalar.py \
     -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
@@ -100,7 +100,7 @@ python scripts/render_per_gaussian_scalar.py \
     --score_transform shift_positive
 
 # 6. Visibility (compute then render)
-echo "[7/8] Computing visibility (4DGS-W)"
+echo "[7/9] Computing visibility (4DGS-W)"
 python scripts/compute_visibility.py -m "$OUT"
 python scripts/render_per_gaussian_scalar.py \
     -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
@@ -108,9 +108,18 @@ python scripts/render_per_gaussian_scalar.py \
     --scores_path "$OUT/uncertainty/visibility.npz" \
     --score_key uncertainty_log
 
-# 7. Conformal prediction for every modality
-echo "[8/8] Conformal prediction across modalities"
-for MOD in color depth entropy sensitivity visibility; do
+# 7. Floater likelihood (composite of isolation / visibility / opacity)
+echo "[8/9] Computing floater likelihood (TIDI-GS-inspired)"
+python scripts/compute_floater.py -m "$OUT"
+python scripts/render_per_gaussian_scalar.py \
+    -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
+    --modality floater \
+    --scores_path "$OUT/uncertainty/floater.npz" \
+    --score_key score_shifted
+
+# 8. Conformal prediction for every modality
+echo "[9/9] Conformal prediction across modalities"
+for MOD in color depth entropy sensitivity visibility floater; do
     echo "    -> $MOD"
     python scripts/conformal_prediction.py \
         --run_dir "$RUN_DIR" \

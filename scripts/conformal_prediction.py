@@ -20,6 +20,7 @@ DEFAULT_SIGMA_KEYS = {
     "entropy": "entropy",
     "sensitivity": "sigma_mean",
     "visibility": "sigma_mean",
+    "floater": "sigma_mean",
 }
 
 
@@ -56,7 +57,7 @@ def parse_args():
     parser.add_argument(
         "--modality",
         required=True,
-        choices=["color", "depth", "entropy", "sensitivity", "visibility"],
+        choices=["color", "depth", "entropy", "sensitivity", "visibility", "floater"],
     )
     parser.add_argument("--sigma_key", default=None, type=str, help="Key to read from raw sigma .npz files")
     parser.add_argument("--iteration", default=-1, type=int, help="Iteration to use, default: latest")

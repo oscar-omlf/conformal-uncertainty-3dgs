@@ -68,7 +68,7 @@ For this project the only thing you really need to remember is: **after training
 
 The setup. You have:
 - A predictor `ŷ(x)` (in our case: the renderer's output for a pixel).
-- A heuristic uncertainty score `σ(x)` (in our case: one of five candidates we'll define later).
+- A heuristic uncertainty score `σ(x)` (in our case: one of six candidates we'll define later).
 - A held-out **calibration set** of `(x, y)` pairs where you know the true `y` (in our case: GT pixels from a held-out camera).
 - A **test set** where you only see `x` (in our case: a different held-out camera, where you pretend not to see the GT).
 
@@ -146,14 +146,25 @@ These two assign a scalar `sᵢ` to *every Gaussian*, then we lift to per-pixel 
   ```
   Then the paper defines per-Gaussian uncertainty as `U_k = 1 − sigmoid((C_k − c0)/c1)` (so highly-visible Gaussians get *low* uncertainty). Intuition: a Gaussian that was touched by lots of training pixels is well-trained; one that was barely visible during training is under-determined.
 
+- **Floater likelihood** (TIDI-GS-inspired, arXiv 2601.09291). Composite score targeting Gaussians that are likely *floaters* — geometric artifacts that sit in empty space. TIDI-GS combines four signals: k-NN spatial isolation, opacity, training-time visibility counter, and a learned importance scalar. The learned scalar requires their training framework so we drop it; the gradient-EMA signal is implicitly captured by `sensitivity` so we drop that too. The remaining three are forward-only on a frozen model. We robust-z-score each and combine:
+  ```
+  d_i  = √distCUDA2(xyz)   ← mean distance to K=3 NN (existing simple_knn primitive)
+  α_i  = gaussians.get_opacity[i]
+  C_i  = visibility (already computed above)
+
+  score[i] = z(d_i) − z(C_i) − z(α_i)
+              ^isolated   ^low_vis   ^low_opacity
+  ```
+  Intuition: a Gaussian flagged by *all three* is sitting alone in space, was rarely needed during training, and has wispy opacity — i.e., a floater. The score is alpha-composited to per-pixel σ the same way as sensitivity and visibility.
+
 ### 3c. How σ enters the conformal procedure
 
-Once we have a per-pixel σ map (by either route), it goes into conformal exactly as in §2:
+Once we have a per-pixel σ map (by any of the routes above), it goes into conformal exactly as in §2:
 
 1. On every calib pixel, score `sᵢ = |render − GT| / σᵢ`. Take 90th percentile → `q̂`.
 2. On every test pixel, emit the interval `2u = 2·q̂·σ`.
 
-Five σ candidates ⇒ five sets of intervals ⇒ five answers to "is this any good?"
+Six σ candidates ⇒ six sets of intervals ⇒ six answers to "is this any good?"
 
 ---
 
@@ -171,7 +182,7 @@ train 3DGS on the 211 training photos                    (~14 min @ 30k iters on
         ▼
 for every held-out frame (30 calib + 60 test):
    render the image                                      (RGB output)
-   render the 5 σ candidates                             (color, depth, entropy, sensitivity, visibility)
+   render the 6 σ candidates                             (color, depth, entropy, sensitivity, visibility, floater)
         │
         ▼
 for each σ candidate, run conformal calibration         (single q̂)
@@ -183,7 +194,7 @@ evaluate on test:
    - Pearson correlation between |err| and 2u, per view
         │
         ▼
-results.md table   (5 rows, one per σ)
+results.md table   (6 rows, one per σ)
 ```
 
 The whole thing is one SLURM job: `sbatch snellius_jobs/01_full_pipeline.job`. Takes ~45 min end-to-end on an A100.
@@ -299,6 +310,8 @@ PUP3DGS has a custom CUDA kernel `pool_fisher_cuda` that computes per-pixel Fish
 
 **Ship visibility (paper-faithful) as a second, complementary signal.** Correlation +0.18 at 30k, robust across folds. It captures something *different* from color — color is per-pixel agreement, visibility is per-Gaussian training coverage. Combining (e.g. `σ = max(σ_color, σ_visibility)`) is a natural next experiment — they shouldn't fail on the same pixels.
 
+**Floater likelihood (TIDI-GS-inspired)** is a new sixth candidate added after the main run; it targets *specifically* the floater failure mode by composing three forward-only signals (k-NN spatial isolation, opacity, visibility). It's added to `01_full_pipeline.job` and ranked alongside the other five. Numbers are pending the next pipeline rerun and will land in the results table when available.
+
 **Be honest about the three negatives.**
 - *Entropy* — CUDA mod works, signal doesn't discriminate on this scene. Worth trying on a scene with more transparent geometry.
 - *Sensitivity* — captures training-time signal, not test-time. Drops by ~0.08 in correlation from 7k to 30k. Its natural use is pruning (the original PUP3DGS contribution), not post-hoc uncertainty.
@@ -351,3 +364,6 @@ Plus methodological bits:
 - The `--sigma_norm none` mode in `conformal_prediction.py` (default after my changes) — see §3c for why we don't need to normalize σ.
 
 After my branch was merged, the team added active-learning-style ranking scripts (`scripts/active_learning/`) and per-scene submission shells under `snellius_jobs/`. Those build on the same σ sources documented here.
+
+I then synced with main and added a sixth σ source as a downstream task:
+- **Floater likelihood** (`scripts/compute_floater.py`, TIDI-GS-inspired): composite of `simple_knn` k=3 spatial isolation, opacity, and the already-computed visibility `C_k`. Combined via robust z-scoring. Added as `--modality floater` to all the conformal scripts and as a new step in `snellius_jobs/01_full_pipeline.job`. Read on a frozen pre-trained 3DGS — no retraining required.
