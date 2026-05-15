@@ -102,6 +102,19 @@ def load_sigma(path, key):
     return sigma, mask
 
 
+def load_view_name_map(split_dir):
+    metadata_path = split_dir / "metadata.json"
+    if not metadata_path.exists():
+        return {}
+    with open(metadata_path, "r") as handle:
+        metadata = json.load(handle)
+    view_names = metadata.get("view_names", [])
+    mapping = {}
+    for idx, view_name in enumerate(view_names):
+        mapping[f"{idx:05d}.png"] = view_name
+    return mapping
+
+
 def conformal_quantile(scores, alpha):
     scores = np.asarray(scores, dtype=np.float32)
     n = scores.size
@@ -209,11 +222,12 @@ def collect_rows(run_dir, iteration, splits, sigma_keys, qhats, normalizations, 
         render_dir = split_dir / "render"
         if not render_dir.exists():
             continue
+        view_name_map = load_view_name_map(split_dir)
         for render_path in sorted(render_dir.glob("*.png")):
-            frame = render_path.name
+            frame = view_name_map.get(render_path.name, render_path.name)
             row = rows_by_name.setdefault(frame, {"frame": frame, "split": split})
             for modality, key in sigma_keys.items():
-                sigma_path = split_dir / "raw_sigma" / modality / frame.replace(".png", ".npz")
+                sigma_path = split_dir / "raw_sigma" / modality / render_path.name.replace(".png", ".npz")
                 if not sigma_path.exists():
                     continue
                 sigma, mask = load_sigma(sigma_path, key)

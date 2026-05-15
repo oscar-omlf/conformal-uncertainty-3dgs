@@ -232,6 +232,14 @@ def select_diverse_ranked(ranked, candidate, train, k, min_gap, penalty):
     selected_set = set()
     reference = list(train)
     ranked_candidates = [(name, score) for name, score in ranked if name in candidate_set]
+    if ranked and not ranked_candidates:
+        ranked_preview = [name for name, _ in ranked[:5]]
+        candidate_preview = candidate[:5]
+        raise ValueError(
+            "No ranked frames matched candidate.txt names. "
+            f"ranked preview={ranked_preview}, candidate preview={candidate_preview}. "
+            "Check render metadata/view_names and ranking frame names."
+        )
 
     while len(selected) < k and ranked_candidates:
         viable = []
@@ -279,7 +287,19 @@ def choose_candidates(args, candidate):
     )
     if len(selected) < k:
         selected_set = set(selected)
-        selected.extend([name for name in candidate if name not in selected_set][: k - len(selected)])
+        reference = args.train + selected
+        index_by_name = image_index_lookup(args.train + candidate)
+        for name in candidate:
+            if name in selected_set:
+                continue
+            distance = min_index_distance(name, reference, index_by_name)
+            if args.min_index_gap <= 0 or distance is None or distance > args.min_index_gap:
+                selected.append(name)
+                selected_set.add(name)
+            if len(selected) == k:
+                break
+        if len(selected) < k:
+            selected.extend([name for name in candidate if name not in selected_set][: k - len(selected)])
     return selected
 
 
