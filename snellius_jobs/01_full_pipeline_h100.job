@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=gpu_a100
+#SBATCH --partition=gpu_h100
 #SBATCH --gres=gpu:1
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
@@ -31,7 +31,7 @@ module load Anaconda3/2025.06-1
 
 module load CUDA/12.9.1
 export CUDA_HOME=$CUDA_ROOT
-export TORCH_CUDA_ARCH_LIST="8.0"
+export TORCH_CUDA_ARCH_LIST="8.0;9.0"
 
 cd $HOME/CV2/conformal-uncertainty-3dgs
 
@@ -57,15 +57,40 @@ echo "Host       : $(hostname)"
 echo "Start      : $(date)"
 echo "================================================================"
 
-# Skip pip install for submodules - they're pre-installed in the conda environment
-# If needed, they can be reinstalled with: pip install --no-build-isolation submodules/NAME
+# Force rebuild of the CUDA submodules for $TORCH_CUDA_ARCH_LIST. The conda env's
+# pre-built .so files are sm_80-only and silently degenerate on H100 (a small
+# 3-point kernel call passes but a real ~200k-point call fails with "no kernel
+# image is available"). Rebuild always on H100 — cheap insurance, ~3-4 min.
+# Also: gaussian_renderer/__init__.py expects the dr_aa branch of the rasterizer
+# (depth output + antialiasing flag); .gitmodules pins main, so check out dr_aa
+# explicitly before building.
+echo "[setup] Switching rasterizer submodule to dr_aa branch + applying top-K patch ..."
+(
+    cd submodules/diff-gaussian-rasterization
+    git fetch origin dr_aa --quiet
+    git checkout dr_aa --quiet
+    git reset --hard origin/dr_aa --quiet  # discard any prior patch state for idempotence
+    git apply ../../patches/0001-rasterizer-topk-weights.patch
+)
 
-# if ! python -c "import diff_gaussian_rasterization, simple_knn, fused_ssim" 2>/dev/null; then
-#     echo "[setup] Building submodules ..."
-#     pip install --no-build-isolation submodules/diff-gaussian-rasterization
-#     pip install --no-build-isolation submodules/simple-knn
-#     pip install --no-build-isolation submodules/fused-ssim
-# fi
+echo "[setup] Rebuilding submodules for arches $TORCH_CUDA_ARCH_LIST ..."
+pip uninstall -y diff_gaussian_rasterization simple_knn fused_ssim || true
+rm -rf submodules/diff-gaussian-rasterization/build \
+       submodules/diff-gaussian-rasterization/diff_gaussian_rasterization.egg-info \
+       submodules/simple-knn/build submodules/simple-knn/simple_knn.egg-info \
+       submodules/fused-ssim/build submodules/fused-ssim/fused_ssim.egg-info
+pip install --no-build-isolation submodules/diff-gaussian-rasterization
+pip install --no-build-isolation submodules/simple-knn
+pip install --no-build-isolation submodules/fused-ssim
+
+# Verify with a realistic-size kernel call (the 3-point edge case is not enough).
+python -c "
+import torch
+from simple_knn._C import distCUDA2
+x = torch.randn(10000, 3, device='cuda')
+y = distCUDA2(x); torch.cuda.synchronize()
+print(f'simple_knn kernel OK (10k points, mean dist {y.mean().item():.4f})')
+"
 
 # 1. Round-robin train/calib/test split
 echo "[1/9] Preparing split manifests"
