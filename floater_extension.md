@@ -225,19 +225,36 @@ python scripts/make_poster_figures.py
 
 ![sigma-correlation bars](assets/floater_extension/plots/ae_correlation_bars.png)
 
-One bar per (scene, modality) cluster. Color sits above every other σ on every scene; visibility is consistently second; the other four hover near zero. This is the single figure that makes the σ-comparison story.
+**What's on the axes.** *x*-axis: the five scenes (tandt/train outdoor, drjohnson indoor, Church T&T, Garden + Bicycle MipNeRF360). *y*-axis: per-view Pearson AE correlation — the average over test views of `corr( |render − GT|, 2·q̂·σ )`. Higher = the σ actually predicts where the renderer is wrong.
 
-### Figure 2 — Conformal K-sweep, three scenes overlaid
+**How to read it.** Six colored bars per scene, one per σ candidate. A bar at ≈ 0 means that σ is uninformative (the conformal procedure still gives valid coverage, but it does so with uniform-width bands). A positive bar means σ adaptively widens the bands in regions where the model is actually wrong.
+
+**What you should see.**
+- **Blue bar (color) is the tallest on every single scene.** Color σ is the universal best signal.
+- **Orange bar (visibility) is consistently second.**
+- The remaining four (sensitivity / floater / depth / entropy) cluster near zero, with the occasional small positive or negative result depending on the scene.
+- The "indoor uplift" claim is visible on the second cluster (drjohnson): floater jumps relative to outdoor scenes — consistent with floaters being more common indoors — but still well below color/visibility.
+
+**Bottom line.** Color σ is the only universally strong uncertainty signal across both indoor and outdoor scenes; visibility is a stable runner-up.
+
+### Figure 2 — Conformal K-sweep on the calibration set (the safety-net visualization)
 
 `assets/floater_extension/plots/kpsweep_calib_psnr.png`
 
 ![K-sweep](assets/floater_extension/plots/kpsweep_calib_psnr.png)
 
-Δ calibration PSNR (relative to baseline) as a function of pruning fraction K, for Church / Garden / Bicycle. The curves are essentially flat with a slight downward slope; the conformal picker's chosen K\* = 0 is marked. This is the cleanest single figure to explain *why* the conformal extension chose to refuse to prune ("safety net" framing).
+**What's on the axes.** *x*-axis: pruning fraction K (% of Gaussians muted, top-ranked by the v2 floater score). *y*-axis: ΔPSNR on the calibration set relative to no-pruning baseline (so the K = 0 point is exactly 0 by construction). Three colored lines, one per scene; the highlighted dots mark the picker's chosen K\* on each scene.
 
-### Figure 3 — Per-scene qualitative panel (GT vs render vs |err| vs top-3 σ)
+**How to read it.** This is what the conformal extension actually sees when it decides whether to prune. For every candidate K, it renders the calibration views with the top-K Gaussians muted and measures PSNR vs the baseline. It accepts a K only if ΔPSNR ≥ 0 AND coverage stays ≥ 1 − α. The largest accepted K is the chosen K\*.
 
-For each of the three (A)/(B)/(C) scenes:
+**What you should see.**
+- All three curves stay essentially flat with a tiny downward slope as K increases — pruning more Gaussians at this score very slightly *degrades* calib PSNR.
+- The picker's chosen point (the labelled dot) lands at K = 0 for **every scene** — there is no K > 0 with positive ΔPSNR.
+- The dashed horizontal line at ΔPSNR = 0 is the picker's decision boundary; nothing crosses above it.
+
+**Bottom line.** The conformal extension correctly *refused to prune* on all three scenes. That's the safety property at work — when a heuristic doesn't actually improve the original task's metric, the procedure detects this and falls back to the baseline.
+
+### Figure 3 — Per-scene qualitative panels (GT vs render vs |err| vs top-3 σ heatmaps)
 
 `assets/floater_extension/Church/qualitative_00000.png`
 ![Church qualitative](assets/floater_extension/Church/qualitative_00000.png)
@@ -248,15 +265,42 @@ For each of the three (A)/(B)/(C) scenes:
 `assets/floater_extension/bicycle/qualitative_00000.png`
 ![Bicycle qualitative](assets/floater_extension/bicycle/qualitative_00000.png)
 
-Six panels each: GT, render, absolute-error heatmap, σ_color heatmap, σ_visibility heatmap, σ_floater heatmap. The visual to lean on for the poster: σ_color is structurally similar to the error map (it "looks like" the error), while σ_floater is much more uniform/diffuse — visual evidence for the AE-correlation numbers.
+**What's in each panel.** Six images, all from the same test camera (frame 00000 in each scene):
+1. **Ground truth** — the real photo the renderer is trying to reproduce.
+2. **3DGS render** — what the trained model produces from this pose.
+3. **|render − GT|** absolute error map (turbo colormap, *blue* = small error, *red* = large error). This is what we'd love σ to predict.
+4. **σ_color** heatmap — per-pixel RGB variance across contributing Gaussians.
+5. **σ_visibility** heatmap — alpha-composited per-Gaussian visibility uncertainty.
+6. **σ_floater** heatmap — alpha-composited v2 floater score.
 
-### Figure 4 — Baseline vs pruned at K=0.10 (Church)
+**How to read it.** Compare each σ panel to the error map (panel 3). A useful σ should *visually* light up the same regions as the error map. The closer the σ-heatmap's pattern matches the error map, the higher its AE correlation.
+
+**What you should see.**
+- **σ_color (panel 4) has visible structure that often mirrors the error map.** Bright edges, texture transitions, and object silhouettes show up in both. That's the +0.20 to +0.44 AE correlation visualized.
+- **σ_visibility (panel 5) has coarser, scene-wide structure** — large regions of similar value rather than fine per-pixel detail. Catches some of the error pattern but less sharply.
+- **σ_floater (panel 6) is very flat and diffuse** — looks almost uniform across the image. That's the near-zero AE correlation visualized: the score targets near-invisible Gaussians that don't move per-pixel σ much.
+
+**Bottom line.** The visual evidence matches the numbers in Figure 1: color σ structurally resembles the error map; floater σ doesn't.
+
+### Figure 4 — Baseline vs pruned at K = 10 % (Church) — the "pruning is invisible" proof
 
 `assets/floater_extension/Church/baseline_vs_pruned_K0.10.png`
 
 ![baseline vs pruned](assets/floater_extension/Church/baseline_vs_pruned_K0.10.png)
 
-Four panels: GT, baseline (A) render, pruned (B, K=10%) render, |A−B| heatmap. The pruned render is visually indistinguishable from baseline (mean per-pixel difference ≈ 0.06 RGB units). This is the visual proof that the floater score targets near-invisible Gaussians — pruning them is a no-op, which is *why* the conformal picker correctly chose K\* = 0.
+**What's in each panel.** Four images for one Church test frame:
+1. **Ground truth** — the real photo.
+2. **(A) Baseline render** — 3DGS with all ~2.2 M Gaussians active.
+3. **(B) Pruned render at K = 10 %** — same model with the top-10 % floater-ranked Gaussians (~223 k of them) muted to opacity 0.
+4. **|A − B| heatmap** — pixel-wise absolute difference between the two renders, turbo colormap.
+
+**How to read it.** If TIDI-GS-style pruning had a substantial effect, panels 2 and 3 would look noticeably different and panel 4 would be brightly colored. If pruning is targeting irrelevant Gaussians, the two renders look the same and the difference heatmap is mostly dark.
+
+**What you should see.**
+- Panels 2 and 3 (baseline vs pruned) are **visually indistinguishable**. Pixels you'd flag as different require zoom-in.
+- The difference heatmap (panel 4) is almost entirely dark, with at most a few scattered hot spots. The title in the figure reports the mean per-pixel difference (≈ 0.06 RGB units out of 255).
+
+**Bottom line.** This is the visual proof of *why* the conformal picker chose K\* = 0. The v2 floater score correctly identifies the Gaussians the model relies on least — pruning them doesn't change the rendering, and therefore doesn't change PSNR. The safety-net behavior in Figure 2 is the inevitable consequence of what you see in this figure.
 
 ### How the figures were generated
 
