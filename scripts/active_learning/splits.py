@@ -224,7 +224,47 @@ def min_index_distance(name, reference_names, index_by_name):
     return min(distances) if distances else None
 
 
-def select_diverse_ranked(ranked, candidate, train, k, min_gap, penalty):
+def nearest_camera_distance(name, reference_names, centers_by_name):
+    if name not in centers_by_name or not reference_names:
+        return None
+    ref_centers = [centers_by_name[ref] for ref in reference_names if ref in centers_by_name]
+    if not ref_centers:
+        return None
+    distances = np.linalg.norm(np.stack(ref_centers, axis=0) - centers_by_name[name][None, :], axis=1)
+    return float(distances.min())
+
+
+def auto_camera_distance_scale(names, centers_by_name):
+    centers = [centers_by_name[name] for name in names if name in centers_by_name]
+    if len(centers) < 2:
+        return 1.0
+    xyz = np.stack(centers, axis=0)
+    distances = np.linalg.norm(xyz[:, None, :] - xyz[None, :, :], axis=2)
+    distances[distances <= 0.0] = np.inf
+    nearest = distances.min(axis=1)
+    finite = nearest[np.isfinite(nearest)]
+    if finite.size == 0:
+        return 1.0
+    return max(float(np.median(finite)), 1e-6)
+
+
+def camera_distance_adjusted_score(score, distance, penalty, scale):
+    if penalty <= 0.0 or distance is None:
+        return score
+    penalty_factor = penalty * float(np.exp(-distance / max(scale, 1e-6)))
+    return score * max(0.0, 1.0 - penalty_factor)
+
+
+def select_diverse_ranked(
+    ranked,
+    candidate,
+    train,
+    k,
+    min_gap,
+    camera_penalty,
+    centers_by_name=None,
+    camera_scale=1.0,
+):
     candidate_set = set(candidate)
     all_names = list(dict.fromkeys(train + candidate + [name for name, _ in ranked]))
     index_by_name = image_index_lookup(all_names)
@@ -245,13 +285,15 @@ def select_diverse_ranked(ranked, candidate, train, k, min_gap, penalty):
         viable = []
         relaxed = []
         for name, score in ranked_candidates:
-            distance = min_index_distance(name, reference, index_by_name)
+            index_distance = min_index_distance(name, reference, index_by_name)
+            camera_distance = nearest_camera_distance(name, reference, centers_by_name) if centers_by_name else None
             adjusted = score
-            if penalty > 0.0 and distance is not None:
-                adjusted = score * (1.0 - penalty / (distance + 1.0))
-            item = (adjusted, score, distance if distance is not None else 10**9, name)
+            if camera_penalty > 0.0:
+                adjusted = camera_distance_adjusted_score(score, camera_distance, camera_penalty, camera_scale)
+            diversity_distance = camera_distance if camera_distance is not None else index_distance
+            item = (adjusted, score, diversity_distance if diversity_distance is not None else 10**9, name)
             relaxed.append(item)
-            if min_gap <= 0 or distance is None or distance > min_gap:
+            if min_gap <= 0 or index_distance is None or index_distance > min_gap:
                 viable.append(item)
         pool = viable if viable else relaxed
         _, _, _, chosen = max(pool, key=lambda item: (item[0], item[1], item[2]))
@@ -277,13 +319,26 @@ def choose_candidates(args, candidate):
         return [candidate[int(round(idx))] for idx in indices]
 
     ranked_frames = load_scores(Path(args.rankings_path), method)
+    centers_by_name = None
+    camera_scale = 1.0
+    if args.camera_distance_penalty > 0.0:
+        centers_by_name = load_camera_centers(args.source_path)
+        needed = list(dict.fromkeys(args.train + candidate))
+        missing = [name for name in needed if name not in centers_by_name]
+        if missing:
+            raise ValueError(f"Missing camera poses for camera-distance penalty: {missing[:10]}")
+        camera_scale = args.camera_distance_scale
+        if camera_scale <= 0.0:
+            camera_scale = auto_camera_distance_scale(needed, centers_by_name)
     selected = select_diverse_ranked(
         ranked_frames,
         candidate,
         args.train,
         k,
         args.min_index_gap,
-        args.index_penalty,
+        args.camera_distance_penalty,
+        centers_by_name,
+        camera_scale,
     )
     if len(selected) < k:
         selected_set = set(selected)
@@ -300,10 +355,18 @@ def choose_candidates(args, candidate):
                 break
         if len(selected) < k:
             selected.extend([name for name in candidate if name not in selected_set][: k - len(selected)])
+    args.camera_distance_scale_used = camera_scale if args.camera_distance_penalty > 0.0 else 0.0
     return selected
 
 
 def update_splits(args):
+    if args.min_index_gap > 0 and args.camera_distance_penalty > 0.0:
+        raise ValueError("Use either --min_index_gap or --camera_distance_penalty, not both.")
+    if not 0.0 <= args.camera_distance_penalty <= 1.0:
+        raise ValueError("--camera_distance_penalty must be in [0, 1].")
+    if args.camera_distance_penalty > 0.0 and not args.source_path:
+        raise ValueError("--source_path is required when --camera_distance_penalty > 0")
+
     input_dir = Path(args.input_dir).resolve()
     output_dir = Path(args.output_dir).resolve()
     train = read_names(input_dir / "train.txt")
@@ -334,7 +397,10 @@ def update_splits(args):
         "seed": args.seed,
         "add_k": args.add_k,
         "min_index_gap": args.min_index_gap,
-        "index_penalty": args.index_penalty,
+        "camera_distance_penalty": args.camera_distance_penalty,
+        "camera_distance_scale": args.camera_distance_scale,
+        "camera_distance_scale_used": getattr(args, "camera_distance_scale_used", 0.0),
+        "source_path": str(Path(args.source_path).resolve()) if args.source_path else "",
         "rankings_path": str(Path(args.rankings_path).resolve()) if args.rankings_path else "",
         "selected": selected,
         **split_map,
@@ -391,7 +457,23 @@ def main():
     update.add_argument("--rankings_path", default="")
     update.add_argument("--add_k", type=int, default=5)
     update.add_argument("--min_index_gap", type=int, default=0)
-    update.add_argument("--index_penalty", type=float, default=0.0)
+    update.add_argument(
+        "--source_path",
+        default="",
+        help="Scene path; required for camera-distance diversity.",
+    )
+    update.add_argument(
+        "--camera_distance_penalty",
+        type=float,
+        default=0.0,
+        help="Soft camera-center proximity penalty in [0, 1]. Mutually exclusive with --min_index_gap.",
+    )
+    update.add_argument(
+        "--camera_distance_scale",
+        type=float,
+        default=0.0,
+        help="Distance scale for camera penalty. If <=0, uses median nearest-neighbor camera distance.",
+    )
     update.add_argument("--round", type=int, required=True)
     update.add_argument("--seed", type=int, default=0)
     update.set_defaults(func=update_splits)

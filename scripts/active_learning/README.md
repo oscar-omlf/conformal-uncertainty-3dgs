@@ -111,9 +111,12 @@ that starts from the first sorted non-test view.
 For the POp-GS-style presets:
 
 ```text
-popgs10: INIT_TRAIN=2, INIT_METHOD=random_fps, ADD_K=1, MIN_INDEX_GAP=4, final train views=10
-popgs20: INIT_TRAIN=4, INIT_METHOD=random_fps, ADD_K=1, MIN_INDEX_GAP=4, final train views=20
+popgs10: INIT_TRAIN=2, INIT_METHOD=random_fps, ADD_K=1, CAMERA_DISTANCE_PENALTY=0.5, final train views=10
+popgs20: INIT_TRAIN=4, INIT_METHOD=random_fps, ADD_K=1, CAMERA_DISTANCE_PENALTY=0.5, final train views=20
 ```
+
+If `MIN_INDEX_GAP` is set explicitly, the camera-distance penalty defaults to
+`0.0`; the two diversity rules are mutually exclusive.
 
 ## Acquisition Methods
 
@@ -172,10 +175,24 @@ candidate_score = mean(top 10% of 2 * q_hat * u_norm_candidate over valid foregr
 
 Candidate GT is not used for acquisition.
 
-For MipNeRF/POp-GS presets, acquisition also applies a small sorted-image
-anti-clustering rule: candidates within `MIN_INDEX_GAP=4` of any current train
-view or newly selected view are skipped when possible. Set `MIN_INDEX_GAP=0` to
-disable it, or use `INDEX_PENALTY` for a softer proximity penalty.
+For MipNeRF/POp-GS presets, acquisition defaults to a camera-center diversity
+penalty:
+
+```bash
+MIN_INDEX_GAP=0 CAMERA_DISTANCE_PENALTY=0.5 CAMERA_DISTANCE_SCALE=0.0 ...
+```
+
+This loads COLMAP poses from `SCENE/sparse/0`, computes each candidate's nearest
+camera-center distance to the current train/selected set, and downweights nearby
+candidates. `CAMERA_DISTANCE_SCALE=0.0` auto-uses the median nearest-neighbor
+camera distance. Use either `MIN_INDEX_GAP` or `CAMERA_DISTANCE_PENALTY`, not
+both.
+
+To use the older sorted-image anti-clustering rule instead:
+
+```bash
+MIN_INDEX_GAP=4 CAMERA_DISTANCE_PENALTY=0.0 ...
+```
 
 For combined methods, each available signal is min-max normalized across the
 candidate views for that round:
