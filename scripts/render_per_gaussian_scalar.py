@@ -55,6 +55,7 @@ def parse_args():
     parser.add_argument("--skip_train", action="store_true")
     parser.add_argument("--skip_calib", action="store_true")
     parser.add_argument("--skip_test", action="store_true")
+    parser.add_argument("--skip_candidate", action="store_true")
     parser.add_argument("--modality", required=True, type=str, help="Output folder name (e.g. sensitivity, visibility)")
     parser.add_argument("--scores_path", required=True, type=str, help="Path to .npz with per-Gaussian scalar")
     parser.add_argument("--score_key", required=True, type=str, help="Key inside the .npz holding the (P,) scalar")
