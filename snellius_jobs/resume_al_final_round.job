@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --partition=gpu_a100
+#SBATCH --gres=gpu:1
+#SBATCH --gpus=1
+#SBATCH --cpus-per-task=8
+#SBATCH --job-name=cv2_al_resume
+#SBATCH --ntasks=1
+#SBATCH --time=04:00:00
+#SBATCH --mem=64000M
+#SBATCH --output=outfiles/al_resume_%A.out
+
+set -eu
+
+cd $HOME/conformal-uncertainty-3dgs
+./snellius_jobs/resume_al_final_round_worker.sh
