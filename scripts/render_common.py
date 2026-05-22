@@ -33,6 +33,7 @@ def build_parser(description):
     parser.add_argument("--skip_train", action="store_true")
     parser.add_argument("--skip_calib", action="store_true")
     parser.add_argument("--skip_test", action="store_true")
+    parser.add_argument("--skip_candidate", action="store_true")
     parser.add_argument("--top_k", type=int, default=4, help="K for top-K weight extraction (entropy renderer only)")
     parser.add_argument("--quiet", action="store_true")
     return parser, model, pipeline
@@ -114,7 +115,7 @@ def select_views(scene, split_map, args):
     if not args.skip_test:
         selected["test"] = [test_views_by_name[name] for name in split_map["test"] if name in test_views_by_name]
     candidate_names = split_map.get("candidate", [])
-    if candidate_names and not args.skip_test:
+    if candidate_names and not getattr(args, "skip_candidate", False):
         selected["candidate"] = [test_views_by_name[name] for name in candidate_names if name in test_views_by_name]
     return {split_name: views for split_name, views in selected.items() if views}
 

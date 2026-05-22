@@ -217,6 +217,10 @@ for ROUND in $(seq 0 "$ROUNDS"); do
     echo "================================================================"
     echo "[round $ROUND_PAD] output=$ROUND_OUT split=$SPLIT_DIR"
     echo "================================================================"
+    IS_FINAL_ROUND=0
+    if [ "$ROUND" -eq "$ROUNDS" ]; then
+        IS_FINAL_ROUND=1
+    fi
 
     echo "[round $ROUND_PAD] Training"
     TRAIN_VIEWS="$(grep -cve '^[[:space:]]*$' "$SPLIT_DIR/train.txt")"
@@ -231,20 +235,28 @@ for ROUND in $(seq 0 "$ROUNDS"); do
     python train.py -s "$SCENE" -m "$ROUND_OUT" --split_dir "$SPLIT_DIR" --iterations "$ROUND_ITERS" --eval
 
     if [ "$NEED_COLOR" -eq 0 ] && [ "$NEED_SENSITIVITY" -eq 0 ] && [ "$NEED_VISIBILITY" -eq 0 ]; then
-        echo "[round $ROUND_PAD] Rendering RGB for evaluation/candidates"
-        python render.py -m "$ROUND_OUT" --split_dir "$SPLIT_DIR" --skip_train
+        echo "[round $ROUND_PAD] Rendering RGB test views for evaluation"
+        python render.py -m "$ROUND_OUT" --split_dir "$SPLIT_DIR" --skip_train --skip_calib --skip_candidate
+    else
+        echo "[round $ROUND_PAD] Rendering RGB test views for PSNR/SSIM/LPIPS"
+        python render.py -m "$ROUND_OUT" --split_dir "$SPLIT_DIR" --skip_train --skip_calib --skip_candidate
+    fi
+
+    SIGNAL_RENDER_FLAGS="--skip_train --skip_test"
+    if [ "$IS_FINAL_ROUND" -eq 1 ]; then
+        SIGNAL_RENDER_FLAGS="--skip_train --skip_candidate"
     fi
 
     if [ "$NEED_COLOR" -eq 1 ]; then
         echo "[round $ROUND_PAD] Rendering color"
-        python scripts/render_color.py -m "$ROUND_OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train
+        python scripts/render_color.py -m "$ROUND_OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" $SIGNAL_RENDER_FLAGS
     fi
 
     if [ "$NEED_SENSITIVITY" -eq 1 ]; then
         echo "[round $ROUND_PAD] Fisher/PUP-style sensitivity"
         python scripts/compute_sensitivity.py -m "$ROUND_OUT"
         python scripts/render_per_gaussian_scalar.py \
-            -m "$ROUND_OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
+            -m "$ROUND_OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" $SIGNAL_RENDER_FLAGS \
             --modality sensitivity \
             --scores_path "$ROUND_OUT/uncertainty/fishers.npz" \
             --score_key fishers_log_dets \
@@ -255,46 +267,54 @@ for ROUND in $(seq 0 "$ROUNDS"); do
         echo "[round $ROUND_PAD] Visibility"
         python scripts/compute_visibility.py -m "$ROUND_OUT"
         python scripts/render_per_gaussian_scalar.py \
-            -m "$ROUND_OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
+            -m "$ROUND_OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" $SIGNAL_RENDER_FLAGS \
             --modality visibility \
             --scores_path "$ROUND_OUT/uncertainty/visibility.npz" \
             --score_key uncertainty_log
     fi
 
-    echo "[round $ROUND_PAD] Conformal metrics"
-    if [ "$NEED_COLOR" -eq 1 ]; then
-        python scripts/conformal_prediction.py \
-            --run_dir "$ROUND_OUT" \
-            --modality color \
-            --sigma_norm minmax_calib \
-            --alpha "$ALPHA" \
-            --calib_sample_ratio 0.1
-    fi
-    if [ "$NEED_SENSITIVITY" -eq 1 ]; then
-        python scripts/conformal_prediction.py \
-            --run_dir "$ROUND_OUT" \
-            --modality sensitivity \
-            --sigma_norm minmax_calib \
-            --alpha "$ALPHA" \
-            --calib_sample_ratio 0.1
-    fi
-    if [ "$NEED_VISIBILITY" -eq 1 ]; then
-        python scripts/conformal_prediction.py \
-            --run_dir "$ROUND_OUT" \
-            --modality visibility \
-            --sigma_norm minmax_calib \
-            --alpha "$ALPHA" \
-            --calib_sample_ratio 0.1
+    if [ "$IS_FINAL_ROUND" -eq 1 ]; then
+        echo "[round $ROUND_PAD] Final-round conformal test metrics"
+        if [ "$NEED_COLOR" -eq 1 ]; then
+            python scripts/conformal_prediction.py \
+                --run_dir "$ROUND_OUT" \
+                --modality color \
+                --sigma_norm minmax_calib \
+                --alpha "$ALPHA" \
+                --calib_sample_ratio 0.1
+        fi
+        if [ "$NEED_SENSITIVITY" -eq 1 ]; then
+            python scripts/conformal_prediction.py \
+                --run_dir "$ROUND_OUT" \
+                --modality sensitivity \
+                --sigma_norm minmax_calib \
+                --alpha "$ALPHA" \
+                --calib_sample_ratio 0.1
+        fi
+        if [ "$NEED_VISIBILITY" -eq 1 ]; then
+            python scripts/conformal_prediction.py \
+                --run_dir "$ROUND_OUT" \
+                --modality visibility \
+                --sigma_norm minmax_calib \
+                --alpha "$ALPHA" \
+                --calib_sample_ratio 0.1
+        fi
+    else
+        echo "[round $ROUND_PAD] Skipping conformal test metrics; calib/candidate sigma still used for acquisition"
     fi
 
     echo "[round $ROUND_PAD] Image metrics"
-    python metrics.py -m "$ROUND_OUT"
+    if [ "$IS_FINAL_ROUND" -eq 1 ]; then
+        python metrics.py -m "$ROUND_OUT"
+    else
+        python metrics.py -m "$ROUND_OUT" --skip_lpips
+    fi
 
-    if [ "$NEED_COLOR" -eq 1 ] || [ "$NEED_SENSITIVITY" -eq 1 ] || [ "$NEED_VISIBILITY" -eq 1 ]; then
+    if [ "$IS_FINAL_ROUND" -eq 1 ] && { [ "$NEED_COLOR" -eq 1 ] || [ "$NEED_SENSITIVITY" -eq 1 ] || [ "$NEED_VISIBILITY" -eq 1 ]; }; then
         echo "[round $ROUND_PAD] Aggregation"
         python scripts/aggregate_results.py --run_dir "$ROUND_OUT"
     else
-        echo "[round $ROUND_PAD] Skipping conformal aggregation; method has no uncertainty signal"
+        echo "[round $ROUND_PAD] Skipping conformal aggregation"
     fi
 
     if [ "$NEED_COLOR" -eq 1 ] || [ "$NEED_SENSITIVITY" -eq 1 ] || [ "$NEED_VISIBILITY" -eq 1 ]; then
