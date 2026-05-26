@@ -19,6 +19,8 @@
 #   METHOD=combined          # random|uniform|fisher|pup|sensitivity|color|visibility|combined
 #   SEED=0
 #   ROUNDS=3                # round_00 plus this many acquisition updates
+#   START_ROUND=0           # resume from this round; previous split files must already exist
+#   END_ROUND=$ROUNDS       # stop after this round; useful for partial resumes/debugging
 #   INIT_TRAIN=10%          # count, fraction, or percent string
 #   INIT_METHOD=random      # random|random_fps|first_fps
 #   CALIB=10%
@@ -40,6 +42,8 @@ if [ -z "${SCENE:-}" ]; then
 fi
 
 ROUNDS_WAS_SET="${ROUNDS+x}"
+START_ROUND_WAS_SET="${START_ROUND+x}"
+END_ROUND_WAS_SET="${END_ROUND+x}"
 INIT_TRAIN_WAS_SET="${INIT_TRAIN+x}"
 INIT_METHOD_WAS_SET="${INIT_METHOD+x}"
 CALIB_WAS_SET="${CALIB+x}"
@@ -53,6 +57,7 @@ TEST_MODE_WAS_SET="${TEST_MODE+x}"
 METHOD="${METHOD:-combined}"
 SEED="${SEED:-0}"
 ROUNDS="${ROUNDS:-3}"
+START_ROUND="${START_ROUND:-0}"
 INIT_TRAIN="${INIT_TRAIN:-10%}"
 INIT_METHOD="${INIT_METHOD:-random}"
 CALIB="${CALIB:-10%}"
@@ -104,6 +109,11 @@ case "$PRESET" in
         exit 1
         ;;
 esac
+END_ROUND="${END_ROUND:-$ROUNDS}"
+if [ "$START_ROUND" -lt 0 ] || [ "$END_ROUND" -lt "$START_ROUND" ] || [ "$END_ROUND" -gt "$ROUNDS" ]; then
+    echo "ERROR: invalid START_ROUND=$START_ROUND END_ROUND=$END_ROUND ROUNDS=$ROUNDS"
+    exit 1
+fi
 if python -c "import sys; sys.exit(0 if float('${MIN_INDEX_GAP}') <= 0 or float('${CAMERA_DISTANCE_PENALTY}') <= 0 else 1)"; then
     :
 else
@@ -166,6 +176,7 @@ echo "Root       : $RUN_ROOT"
 echo "Method     : $METHOD"
 echo "Seed       : $SEED"
 echo "Rounds     : $ROUNDS"
+echo "Resume     : START_ROUND=$START_ROUND END_ROUND=$END_ROUND"
 echo "Preset     : ${PRESET:-none}"
 echo "Init train : $INIT_TRAIN"
 echo "Init method: $INIT_METHOD"
@@ -193,7 +204,7 @@ echo "================================================================"
 # fi
 
 ROUND0_SPLITS="$RUN_ROOT/round_00/splits"
-if [ ! -f "$ROUND0_SPLITS/train.txt" ]; then
+if [ "$START_ROUND" -eq 0 ] && [ ! -f "$ROUND0_SPLITS/train.txt" ]; then
     echo "[init] Creating initial active-learning split"
     python scripts/active_learning/splits.py init \
         --source_path "$SCENE" \
@@ -207,8 +218,15 @@ if [ ! -f "$ROUND0_SPLITS/train.txt" ]; then
         --test_mode "$TEST_MODE" \
         --llffhold "$LLFFHOLD"
 fi
+START_PAD="$(printf "%02d" "$START_ROUND")"
+if [ ! -f "$RUN_ROOT/round_${START_PAD}/splits/train.txt" ]; then
+    echo "ERROR: missing split for START_ROUND=$START_ROUND:"
+    echo "  $RUN_ROOT/round_${START_PAD}/splits/train.txt"
+    echo "Resume requires all previous rounds up to this split to have completed selection."
+    exit 1
+fi
 
-for ROUND in $(seq 0 "$ROUNDS"); do
+for ROUND in $(seq "$START_ROUND" "$END_ROUND"); do
     ROUND_PAD="$(printf "%02d" "$ROUND")"
     ROUND_OUT="$RUN_ROOT/round_${ROUND_PAD}"
     SPLIT_DIR="$ROUND_OUT/splits"
