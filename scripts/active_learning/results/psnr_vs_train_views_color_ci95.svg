@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="700" viewBox="0 0 1100 700">
+<style>text{font-family:Arial,Helvetica,sans-serif}.title{font-size:26px;font-weight:700}.label{font-size:18px}.tick{font-size:14px}.legend{font-size:15px}</style>
+<rect width="100%" height="100%" fill="white"/>
+<text x="550.0" y="38" text-anchor="middle" class="title">PSNR vs Training Views (Conformal color)</text>
+<line x1="90" y1="615" x2="840" y2="615" stroke="#222" stroke-width="1.5"/>
+<line x1="90" y1="70" x2="90" y2="615" stroke="#222" stroke-width="1.5"/>
+<line x1="90.0" y1="70" x2="90.0" y2="615" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="90.0" y="640" text-anchor="middle" class="tick">4</text>
+<line x1="183.8" y1="70" x2="183.8" y2="615" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="183.8" y="640" text-anchor="middle" class="tick">6</text>
+<line x1="277.5" y1="70" x2="277.5" y2="615" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="277.5" y="640" text-anchor="middle" class="tick">8</text>
+<line x1="371.2" y1="70" x2="371.2" y2="615" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="371.2" y="640" text-anchor="middle" class="tick">10</text>
+<line x1="465.0" y1="70" x2="465.0" y2="615" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="465.0" y="640" text-anchor="middle" class="tick">12</text>
+<line x1="558.8" y1="70" x2="558.8" y2="615" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="558.8" y="640" text-anchor="middle" class="tick">14</text>
+<line x1="652.5" y1="70" x2="652.5" y2="615" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="652.5" y="640" text-anchor="middle" class="tick">16</text>
+<line x1="746.2" y1="70" x2="746.2" y2="615" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="746.2" y="640" text-anchor="middle" class="tick">18</text>
+<line x1="840.0" y1="70" x2="840.0" y2="615" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="840.0" y="640" text-anchor="middle" class="tick">20</text>
+<line x1="90" y1="578.3" x2="840" y2="578.3" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="78" y="583.3" text-anchor="end" class="tick">15</text>
+<line x1="90" y1="510.9" x2="840" y2="510.9" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="78" y="515.9" text-anchor="end" class="tick">16</text>
+<line x1="90" y1="443.5" x2="840" y2="443.5" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="78" y="448.5" text-anchor="end" class="tick">17</text>
+<line x1="90" y1="376.1" x2="840" y2="376.1" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="78" y="381.1" text-anchor="end" class="tick">18</text>
+<line x1="90" y1="308.7" x2="840" y2="308.7" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="78" y="313.7" text-anchor="end" class="tick">19</text>
+<line x1="90" y1="241.2" x2="840" y2="241.2" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="78" y="246.2" text-anchor="end" class="tick">20</text>
+<line x1="90" y1="173.8" x2="840" y2="173.8" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="78" y="178.8" text-anchor="end" class="tick">21</text>
+<line x1="90" y1="106.4" x2="840" y2="106.4" stroke="#d0d0d0" stroke-opacity="0.55"/>
+<text x="78" y="111.4" text-anchor="end" class="tick">22</text>
+<text x="465.0" y="675" text-anchor="middle" class="label">Training views</text>
+<text x="25" y="342.5" transform="rotate(-90 25 342.5)" text-anchor="middle" class="label">PSNR (dB)</text>
+<polygon points="90.0,430.9 136.9,393.1 183.8,351.8 230.6,320.6 277.5,303.3 324.4,269.3 371.2,250.4 418.1,219.0 465.0,190.0 511.9,175.4 558.8,165.6 605.6,134.6 652.5,121.6 699.4,114.3 746.2,100.1 793.1,94.8 840.0,116.2 840.0,476.2 793.1,384.4 746.2,384.0 699.4,390.9 652.5,395.0 605.6,396.4 558.8,412.6 511.9,422.6 465.0,430.6 418.1,449.9 371.2,481.0 324.4,481.2 277.5,500.9 230.6,515.1 183.8,535.5 136.9,563.8 90.0,590.2" fill="rgba(31,119,180,0.14)" stroke="none"/>
+<polyline points="90.0,510.5 136.9,478.5 183.8,443.6 230.6,417.9 277.5,402.1 324.4,375.2 371.2,365.7 418.1,334.5 465.0,310.3 511.9,299.0 558.8,289.1 605.6,265.5 652.5,258.3 699.4,252.6 746.2,242.1 793.1,239.6 840.0,296.2" fill="none" stroke="#1f77b4" stroke-width="3.2"/>
+<circle cx="90.0" cy="510.5" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="136.9" cy="478.5" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="183.8" cy="443.6" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="230.6" cy="417.9" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="277.5" cy="402.1" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="324.4" cy="375.2" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="371.2" cy="365.7" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="418.1" cy="334.5" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="465.0" cy="310.3" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="511.9" cy="299.0" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="558.8" cy="289.1" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="605.6" cy="265.5" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="652.5" cy="258.3" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="699.4" cy="252.6" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="746.2" cy="242.1" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="793.1" cy="239.6" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<circle cx="840.0" cy="296.2" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<line x1="875" y1="90" x2="903" y2="90" stroke="#1f77b4" stroke-width="3.2"/>
+<circle cx="889" cy="90" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
+<text x="913" y="95" class="legend">Conformal color</text>
+<line x1="90" y1="181.2" x2="840" y2="181.2" stroke="#111111" stroke-width="1.2" stroke-dasharray="4 4" stroke-opacity="0.45"/>
+<text x="840.0" y="188.2" text-anchor="middle" font-size="25" font-weight="700" fill="#111111" stroke="white" stroke-width="0.6">×</text>
+<text x="889" y="126" text-anchor="middle" font-size="22" font-weight="700" fill="#111111">×</text>
+<text x="913" y="123" class="legend">FisherRF avg. (20 views)</text>
+<line x1="90" y1="202.9" x2="840" y2="202.9" stroke="#e91e63" stroke-width="1.2" stroke-dasharray="4 4" stroke-opacity="0.45"/>
+<text x="840.0" y="209.9" text-anchor="middle" font-size="25" font-weight="700" fill="#e91e63" stroke="white" stroke-width="0.6">✚</text>
+<text x="889" y="154" text-anchor="middle" font-size="22" font-weight="700" fill="#e91e63">✚</text>
+<text x="913" y="151" class="legend">POP-GS avg. (20 views)</text>
+<text x="835" y="605" text-anchor="end" class="tick" fill="#555">Shading: 95% CI across scenes</text>
+<text x="835" y="585" text-anchor="end" class="tick" fill="#555">FisherRF / POP-GS are Mip-NeRF360 averages</text>
+</svg>

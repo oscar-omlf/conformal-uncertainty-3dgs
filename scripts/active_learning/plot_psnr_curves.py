@@ -46,6 +46,23 @@ COLORS = {
     "random": "#7f7f7f",
 }
 
+BASELINE_POINTS = [
+    {
+        "label": "FisherRF avg. (20 views)",
+        "x": 20.0,
+        "y": 20.89,
+        "color": "#111111",
+        "marker": "X",
+    },
+    {
+        "label": "POP-GS avg. (20 views)",
+        "x": 20.0,
+        "y": 20.568,
+        "color": "#e91e63",
+        "marker": "P",
+    },
+]
+
 
 def read_train_count(round_dir):
     path = round_dir / "splits" / "train.txt"
@@ -145,7 +162,7 @@ def style_axes(ax, title):
     ax.spines["right"].set_visible(False)
 
 
-def plot_clean(summary, out_path, title, show_points):
+def plot_clean(summary, out_path, title, show_points, show_baselines):
     series = series_from_summary(summary)
     fig, ax = plt.subplots(figsize=(9.5, 6.0))
 
@@ -157,7 +174,8 @@ def plot_clean(summary, out_path, title, show_points):
         ax.plot(xs, ys, linewidth=3.0, marker="o" if show_points else None, markersize=6, label=label, color=color)
 
     style_axes(ax, title)
-    add_paper_reference_points(ax)
+    if show_baselines:
+        add_paper_reference_points(ax)
 
     ax.legend(
         frameon=True,
@@ -171,7 +189,7 @@ def plot_clean(summary, out_path, title, show_points):
     plt.close(fig)
 
 
-def plot_shaded(summary, out_path, title, show_points):
+def plot_shaded(summary, out_path, title, show_points, show_baselines):
     series = series_from_summary(summary)
     fig, ax = plt.subplots(figsize=(9.5, 6.0))
 
@@ -188,7 +206,8 @@ def plot_shaded(summary, out_path, title, show_points):
             ax.fill_between(xs, lo, hi, color=color, alpha=0.16, linewidth=0)
 
     style_axes(ax, title)
-    add_paper_reference_points(ax)
+    if show_baselines:
+        add_paper_reference_points(ax)
 
     ax.legend(
         frameon=True,
@@ -202,15 +221,12 @@ def plot_shaded(summary, out_path, title, show_points):
 
 def add_paper_reference_points(ax):
     # Mip-NeRF360 average 20-view values from prior work, not per-scene Bicycle/Garden values.
-    refs = [
-        {"label": "FisherRF avg.", "x": 20.25, "y": 20.89, "color": "#111111", "marker": "X"},
-        {"label": "POP-GS avg.", "x": 20.25, "y": 20.568, "color": "#e91e63", "marker": "P"},
-    ]
+    refs = BASELINE_POINTS
 
     # Force axes to include the reference points.
     x0, x1 = ax.get_xlim()
     y0, y1 = ax.get_ylim()
-    ax.set_xlim(min(x0, 3.8), max(x1, 20.8))
+    ax.set_xlim(min(x0, 3.8), max(x1, 20.6))
     ax.set_ylim(min(y0, min(r["y"] for r in refs) - 0.4), max(y1, max(r["y"] for r in refs) + 0.4))
 
     for ref in refs:
@@ -253,6 +269,7 @@ def main():
     parser.add_argument("--title", default="PSNR vs Training Views")
     parser.add_argument("--methods", nargs="+", default=None)
     parser.add_argument("--no_points", action="store_true")
+    parser.add_argument("--no_baselines", action="store_true", help="Do not plot FisherRF / POP-GS reference markers.")
     args = parser.parse_args()
 
     al_root = args.al_root.resolve()
@@ -265,8 +282,8 @@ def main():
     summary = summarize(rows)
 
     write_csv(out_dir / "psnr_vs_train_views.csv", rows, summary)
-    plot_clean(summary, out_dir / "psnr_vs_train_views_clean.png", args.title, not args.no_points)
-    plot_shaded(summary, out_dir / "psnr_vs_train_views_shaded.png", args.title, not args.no_points)
+    plot_clean(summary, out_dir / "psnr_vs_train_views_clean.png", args.title, not args.no_points, not args.no_baselines)
+    plot_shaded(summary, out_dir / "psnr_vs_train_views_shaded.png", args.title, not args.no_points, not args.no_baselines)
 
     print(f"Wrote plots to {out_dir}")
     print(f"  {out_dir / 'psnr_vs_train_views_clean.png'}")

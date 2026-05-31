@@ -245,6 +245,18 @@ views, uses `llffhold=8` for the fixed test set, trains intermediate rounds for
 `100 * train_views` iterations, and trains the final 20-view model for 21,000
 iterations.
 
+To reduce runtime, intermediate rounds are treated as acquisition rounds rather
+than full evaluation rounds:
+
+```text
+intermediate rounds: train, render test RGB, compute PSNR/SSIM, render only the signal needed for calib/candidate, select next view
+final round: train full model, render calib/test signals, run conformal metrics, compute PSNR/SSIM/LPIPS, aggregate final tables/plots
+```
+
+This means LPIPS and per-view conformal test metrics are only complete for the
+final round. Intermediate PSNR/SSIM are still logged so learning curves can be
+plotted.
+
 Default methods:
 
 ```text
@@ -301,6 +313,20 @@ ITERS=7000 \
 sbatch snellius_jobs/02_active_learning_loop.job
 ```
 
+Resume a partially completed run from a specific round:
+
+```bash
+SCENE=mipnerf/garden \
+AL_ROOT=/scratch-shared/$USER/output/active_learning_mipnerf/garden_popgs20 \
+METHOD=conformal_visibility \
+PRESET=popgs20 \
+START_ROUND=10 \
+sbatch snellius_jobs/02_active_learning_loop.job
+```
+
+Use `END_ROUND` as well if you only want to rerun a short range for debugging.
+The split files for `START_ROUND` must already exist.
+
 Each method renders only the signal it needs. For example,
 `conformal_color` renders color only, `raw_sensitivity` renders Fisher
 sensitivity only, and `conformal_visibility` renders visibility only. Depth and
@@ -334,23 +360,75 @@ The figures include PSNR/SSIM/LPIPS learning curves and per-modality
 coverage/full-width/AE-correlation/AUSE curves against number of training
 views.
 
-## Results 
+For long-running scratch jobs, archive compact results before scratch cleanup:
 
-### MipNerf - Garden
+```bash
+AL_RUN=garden_popgs20 DEST=/path/to/archive ./snellius_jobs/archive_active_learning_mipnerf.sh
+```
 
-| method | seed | round | train views | PSNR ↑ | SSIM ↑ | LPIPS ↓ |
-|---|---|---:|---:|---:|---:|---:|
-| conformal_color | 0 | 16 | 20 | 19.995 | 0.5500 | 0.3277 |
-| conformal_sensitivity | 0 | 16 | 20 | 19.949 | 0.5490 | 0.3279 |
-| conformal_visibility | 0 | 16 | 20 | 19.961 | 0.5493 | 0.3277 |
-| raw_sensitivity | 0 | 16 | 20 | 19.955 | 0.5492 | 0.3282 |
-| uniform | 0 | 16 | 20 | 20.761 | 0.6315 | 0.2689 |
+The archive keeps final metrics, learning-curve inputs, split summaries,
+rankings, plots, and a small number of preview images. It intentionally does not
+copy full checkpoints or all rendered images.
 
-### MipNerf - Bicycle
+## Aggregating Archived Scenes
 
-| method | seed | round | train views | PSNR ↑ | SSIM ↑ | LPIPS ↓ |
-|---|---|---:|---:|---:|---:|---:|
-| conformal_color | 0 | 16 | 20 | 16.634 | 0.3208 | 0.4995 |
-| conformal_visibility | 0 | 16 | 20 | 16.652 | 0.3196 | 0.4993 |
-| raw_sensitivity | 0 | 16 | 20 | 16.567 | 0.3177 | 0.4998 |
-| uniform | 0 | 16 | 20 | 17.888 | 0.3938 | 0.4560 |
+After collecting scene archives, aggregate them with:
+
+```bash
+python scripts/active_learning/aggregate_scene_archives.py \
+  --archives_root al_archives
+```
+
+This writes:
+
+```text
+al_archives/summary_9scenes/final_metrics_mean.md
+al_archives/summary_9scenes/final_metrics_mean.csv
+al_archives/summary_9scenes/psnr_vs_train_views_ci95.svg
+al_archives/summary_9scenes/psnr_vs_train_views_std.svg
+al_archives/summary_9scenes/per_signal/
+```
+
+The same report-ready outputs have been copied into:
+
+```text
+scripts/active_learning/results/
+```
+
+The aggregate plots include FisherRF and POP-GS paper-average reference markers
+at 20 views. Those references are not rerun baselines from this repository; they
+are reported as paper averages.
+
+## Results
+
+Current nine-scene Mip-NeRF360 20-view summary:
+
+| method | scenes | PSNR ↑ | SSIM ↑ | LPIPS ↓ |
+|---|---:|---:|---:|---:|
+| Conformal color | 9 | 19.185 ± 4.086 | 0.5602 ± 0.2342 | 0.3824 ± 0.1292 |
+| Conformal sensitivity | 9 | 18.803 ± 2.590 | 0.5643 ± 0.1593 | 0.3845 ± 0.0829 |
+| Conformal visibility | 9 | 20.508 ± 2.955 | 0.6104 ± 0.1988 | 0.3481 ± 0.1013 |
+| Raw sensitivity | 9 | 18.939 ± 2.670 | 0.5737 ± 0.1630 | 0.3781 ± 0.0830 |
+| Uniform | 9 | 18.377 ± 1.743 | 0.5346 ± 0.1330 | 0.4031 ± 0.0628 |
+| FisherRF avg. (20 views) | paper avg. | 20.890 | 0.6080 | 0.4160 |
+| POP-GS avg. (20 views) | paper avg. | 20.568 | 0.6080 | 0.3650 |
+
+Interpretation: conformal visibility is the strongest signal in the current
+aggregate. It is close to FisherRF/POP-GS in PSNR, slightly above their reported
+SSIM average, and better on LPIPS. Do not describe this as beating FisherRF
+overall, because FisherRF remains higher in PSNR and the reference is a paper
+average rather than a matched rerun.
+
+### Aggregate Plots
+
+![PSNR vs training views, 95% CI](results/psnr_vs_train_views_ci95.svg)
+
+Per-signal report plots:
+
+![Color acquisition](results/psnr_vs_train_views_color_ci95.svg)
+
+![Visibility acquisition](results/psnr_vs_train_views_visibility_ci95.svg)
+
+![Conformal sensitivity acquisition](results/psnr_vs_train_views_sensitivity_ci95.svg)
+
+![Raw sensitivity acquisition](results/psnr_vs_train_views_raw_sensitivity_ci95.svg)

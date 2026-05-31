@@ -5,13 +5,13 @@ set -eu
 # scratch, then optionally rsync it somewhere else.
 #
 # Usage on Snellius:
-#   AL_RUN=garden_popgs20_camera ./snellius_jobs/archive_active_learning_mipnerf.sh
-#   AL_RUN=bonsai_popgs20_camera ./snellius_jobs/archive_active_learning_mipnerf.sh
+#   AL_RUN=garden_popgs20 ./snellius_jobs/archive_active_learning_mipnerf.sh
+#   AL_RUN=bonsai_popgs20 ./snellius_jobs/archive_active_learning_mipnerf.sh
 #
 # Optional:
 #   OUTPUT_BASE=/scratch-shared/$USER/output
 #   AL_ROOT=$OUTPUT_BASE/active_learning_mipnerf/<run_name>
-#   DATASET_NAME=garden RUN_SUFFIX=popgs20_camera  # convenience alternative to AL_RUN
+#   DATASET_NAME=garden RUN_SUFFIX=popgs20  # convenience alternative to AL_RUN
 #   ARCHIVE_BASE=$HOME/al_archives
 #   PREVIEW_FRAMES="00000 00008"  # test-frame stems to keep across rounds
 #   DEST=""   # intentionally empty by default; set to rsync destination if useful
@@ -22,10 +22,10 @@ set -eu
 OUTPUT_BASE="${OUTPUT_BASE:-/scratch-shared/$USER/output}"
 AL_RUN="${AL_RUN:-}"
 DATASET_NAME="${DATASET_NAME:-}"
-RUN_SUFFIX="${RUN_SUFFIX:-popgs20_camera}"
+RUN_SUFFIX="${RUN_SUFFIX:-popgs20}"
 if [ -z "$AL_RUN" ]; then
     if [ -z "$DATASET_NAME" ]; then
-        echo "ERROR: set AL_RUN=<dataset>_popgs20_camera or DATASET_NAME=<dataset>"
+        echo "ERROR: set AL_RUN=<dataset>_popgs20 or DATASET_NAME=<dataset>"
         exit 1
     fi
     AL_RUN="${DATASET_NAME}_${RUN_SUFFIX}"
