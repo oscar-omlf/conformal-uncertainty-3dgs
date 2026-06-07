@@ -1,3 +1,72 @@
+# Conformal Uncertainty Guided 3D Gaussian Splatting
+
+This repository extends the original 3D Gaussian Splatting implementation with
+uncertainty estimation, conformal calibration, and downstream active-learning
+experiments for view selection.
+
+The original 3DGS codebase is still the training/rendering backbone. The new
+code in this fork focuses on answering a separate question: can uncertainty
+signals from a trained 3DGS model be calibrated and used to choose better
+training views?
+
+## Contributions In This Fork
+
+- **Uncertainty signals for 3DGS**: color, inverse depth, Fisher/sensitivity,
+  and visibility uncertainty maps.
+- **Conformal calibration**: calibration-set normalization and conformal
+  full-width intervals, with per-view coverage, width, correlation, and AUSE
+  metrics.
+- **Active view selection**: iterative Mip-NeRF360-style active-learning loops
+  using conformal color, conformal visibility, conformal sensitivity, raw
+  Fisher/sensitivity, and uniform baselines.
+- **Camera-distance diversity**: a soft camera-center penalty to reduce
+  adjacent-view clustering during acquisition.
+- **Result aggregation**: nine-scene Mip-NeRF360 summaries, PSNR-vs-train-view
+  plots, signal-specific comparisons, and report-ready artifacts.
+- **Exploratory downstream task**: floater suppression analysis using
+  uncertainty-related per-Gaussian scores.
+
+## Active Learning Results
+
+The current strongest acquisition signal is conformal visibility. Across the
+nine archived Mip-NeRF360 20-view runs, it is the best of the tested signals and
+improves over this repository's uniform active-learning baseline, while remaining
+below the POP-GS paper reference in PSNR/SSIM.
+
+![PSNR vs training views](scripts/active_learning/results/psnr_vs_train_views_ci95.svg)
+
+For full details, commands, result tables, qualitative examples, and videos, see:
+
+[scripts/active_learning/README.md](scripts/active_learning/README.md)
+
+Useful entry points:
+
+```bash
+# Run a POp-GS-style 20-view Mip-NeRF360 active-learning experiment.
+DATASET_NAME=garden ./snellius_jobs/submit_mipnerf_popgs20.sh
+
+# Aggregate archived scene results.
+python scripts/active_learning/aggregate_scene_archives.py --archives_root al_archives
+```
+
+## Repository Layout
+
+```text
+scripts/conformal_prediction.py          conformal calibration and metrics
+scripts/compute_sensitivity.py           Fisher/sensitivity uncertainty
+scripts/compute_visibility.py            visibility uncertainty
+scripts/render_color.py                  color uncertainty rendering
+scripts/render_depth.py                  depth/inverse-depth uncertainty rendering
+scripts/active_learning/                 active-learning split, ranking, plotting, aggregation tools
+snellius_jobs/                           Snellius job wrappers for full and active-learning pipelines
+```
+
+## Original 3DGS Documentation
+
+The rest of this README is the upstream 3D Gaussian Splatting documentation. It
+describes the base optimizer, renderer, environment setup, viewers, and original
+evaluation workflow that this project builds on.
+
 # 3D Gaussian Splatting for Real-Time Radiance Field Rendering
 Bernhard Kerbl*, Georgios Kopanas*, Thomas Leimkühler, George Drettakis (* indicates equal contribution)<br>
 | [Webpage](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/) | [Full Paper](https://repo-sam.inria.fr/fungraph/3d-gaussian-splatting/3d_gaussian_splatting_high.pdf) | [Video](https://youtu.be/T_kXY43VZnk) | [Other GRAPHDECO Publications](http://www-sop.inria.fr/reves/publis/gdindex.php) | [FUNGRAPH project page](https://fungraph.inria.fr) |<br>

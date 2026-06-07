@@ -4,5 +4,5 @@ conformal_sensitivity,Conformal sensitivity,9,18.8027736875746,2.590223305405874
 conformal_visibility,Conformal visibility,9,20.50757779015435,2.9545297853987833,1.9302927931272051,0.6104081173737844,0.19881085658714315,0.12988975963693353,0.34808216326766545,0.10126518648405976,0.06615992183625237,"bicycle,bonsai,counter,flowers,garden,kitchen,room,stump,treehill"
 raw_sensitivity,Raw sensitivity,9,18.938661363389755,2.6695674909314353,1.7441174274085378,0.5736655725373162,0.16297402326979557,0.10647636186959976,0.37812958823310006,0.08298348465590674,0.05421587664185907,"bicycle,bonsai,counter,flowers,garden,kitchen,room,stump,treehill"
 uniform,Uniform,9,18.37722894880507,1.7431273500789897,1.1388432020516066,0.5345665746264987,0.13303909117864854,0.08691887290338372,0.4030900067753262,0.06276887001508989,0.0410089950765254,"bicycle,bonsai,counter,flowers,garden,kitchen,room,stump,treehill"
-fisherrf_paper_avg,FisherRF avg. (20 views),paper avg.,20.89,,,0.608,,,0.416,,,Mip-NeRF360 paper average
-popgs_paper_avg,POP-GS avg. (20 views),paper avg.,20.568,,,0.608,,,0.365,,,Mip-NeRF360 paper average
+fisherrf_paper_avg,FisherRF avg. (20 views),paper avg.,20.568,,,0.608,,,0.365,,,Mip-NeRF360 paper average
+popgs_paper_avg,POP-GS avg. (20 views),paper avg.,21.32,,,0.636,,,0.397,,,Mip-NeRF360 paper average

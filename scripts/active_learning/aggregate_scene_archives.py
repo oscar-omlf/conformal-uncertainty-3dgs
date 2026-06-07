@@ -53,14 +53,14 @@ BASELINE_POINTS = [
     {
         "label": "FisherRF avg. (20 views)",
         "x": 20.0,
-        "y": 20.89,
+        "y": 20.568,
         "color": "#111111",
         "marker": "X",
     },
     {
         "label": "POP-GS avg. (20 views)",
         "x": 20.0,
-        "y": 20.568,
+        "y": 21.32,
         "color": "#e91e63",
         "marker": "P",
     },
@@ -70,16 +70,16 @@ BASELINE_METRICS = [
     {
         "method": "fisherrf_paper_avg",
         "label": "FisherRF avg. (20 views)",
-        "psnr_mean": 20.89,
+        "psnr_mean": 20.568,
         "ssim_mean": 0.608,
-        "lpips_mean": 0.416,
+        "lpips_mean": 0.365,
     },
     {
         "method": "popgs_paper_avg",
         "label": "POP-GS avg. (20 views)",
-        "psnr_mean": 20.568,
-        "ssim_mean": 0.608,
-        "lpips_mean": 0.365,
+        "psnr_mean": 21.32,
+        "ssim_mean": 0.636,
+        "lpips_mean": 0.397,
     },
 ]
 
@@ -581,6 +581,8 @@ def main():
     ci_plot = plot_curve(curve_summary, out_dir / "psnr_vs_train_views_ci95.png", args.title, "ci95_psnr", "Shading: 95% CI across scenes", not args.no_baselines)
     per_signal_dir = out_dir / "per_signal"
     per_signal_dir.mkdir(parents=True, exist_ok=True)
+    per_signal_with_uniform_dir = out_dir / "per_signal_with_uniform"
+    per_signal_with_uniform_dir.mkdir(parents=True, exist_ok=True)
     per_signal_plots = []
     for method in args.methods:
         if method == "uniform":
@@ -610,6 +612,28 @@ def main():
                 not args.no_baselines,
             )
         )
+        rows_with_uniform = filter_methods(curve_summary, [method, "uniform"])
+        if len({row["method"] for row in rows_with_uniform}) > 1:
+            per_signal_plots.append(
+                plot_curve(
+                    rows_with_uniform,
+                    per_signal_with_uniform_dir / f"psnr_vs_train_views_{basename}_vs_uniform_ci95.png",
+                    f"PSNR vs Training Views ({label} vs Uniform)",
+                    "ci95_psnr",
+                    "Shading: 95% CI across scenes",
+                    not args.no_baselines,
+                )
+            )
+            per_signal_plots.append(
+                plot_curve(
+                    rows_with_uniform,
+                    per_signal_with_uniform_dir / f"psnr_vs_train_views_{basename}_vs_uniform_std.png",
+                    f"PSNR vs Training Views ({label} vs Uniform)",
+                    "std_psnr",
+                    "Shading: ±1 std across scenes",
+                    not args.no_baselines,
+                )
+            )
 
     print(f"Scenes ({len(scene_dirs)}):")
     for path in scene_dirs:
@@ -619,6 +643,7 @@ def main():
     print(f"  {std_plot}")
     print(f"  {ci_plot}")
     print(f"  per-signal plots: {per_signal_dir}")
+    print(f"  per-signal + uniform plots: {per_signal_with_uniform_dir}")
 
 
 if __name__ == "__main__":

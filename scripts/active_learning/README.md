@@ -410,14 +410,39 @@ Current nine-scene Mip-NeRF360 20-view summary:
 | Conformal visibility | 9 | 20.508 ± 2.955 | 0.6104 ± 0.1988 | 0.3481 ± 0.1013 |
 | Raw sensitivity | 9 | 18.939 ± 2.670 | 0.5737 ± 0.1630 | 0.3781 ± 0.0830 |
 | Uniform | 9 | 18.377 ± 1.743 | 0.5346 ± 0.1330 | 0.4031 ± 0.0628 |
-| FisherRF avg. (20 views) | paper avg. | 20.890 | 0.6080 | 0.4160 |
-| POP-GS avg. (20 views) | paper avg. | 20.568 | 0.6080 | 0.3650 |
+| FisherRF avg. (20 views) | paper avg. | 20.568 | 0.6080 | 0.3650 |
+| POP-GS avg. (20 views) | paper avg. | 21.320 | 0.6360 | 0.3970 |
 
 Interpretation: conformal visibility is the strongest signal in the current
-aggregate. It is close to FisherRF/POP-GS in PSNR, slightly above their reported
-SSIM average, and better on LPIPS. Do not describe this as beating FisherRF
-overall, because FisherRF remains higher in PSNR and the reference is a paper
-average rather than a matched rerun.
+aggregate. It is close to FisherRF in PSNR, below the POP-GS paper average in
+PSNR/SSIM, and better than both references on LPIPS. Do not describe this as
+beating FisherRF or POP-GS overall, because the paper references are not matched
+reruns under this repository's conformal calibration split.
+
+### Qualitative Results
+
+The active-learning loop repeatedly trains 3DGS, extracts uncertainty signals,
+calibrates them with conformal prediction, and selects the next candidate view.
+
+![Active learning pipeline](results/al.png)
+
+Example render and uncertainty maps:
+
+| Ground truth | Render | Color | Inverse depth |
+|---|---|---|---|
+| ![Ground truth](results/gt.png) | ![Render](results/render.png) | ![Color uncertainty](results/color.png) | ![Inverse depth uncertainty](results/depth.png) |
+
+| Sensitivity | Visibility |
+|---|---|
+| ![Sensitivity uncertainty](results/sense.png) | ![Visibility uncertainty](results/vis.png) |
+
+Render progression videos are included for the conformal-visibility runs:
+
+| Scene | Standard progression | Active-learning progression |
+|---|---|---|
+| Bonsai | [bonsai.mp4](results/bonsai.mp4) | [bonsai-al.mp4](results/bonsai-al.mp4) |
+| Garden | [garden.mp4](results/garden.mp4) | [garden-al.mp4](results/garden-al.mp4) |
+| Treehill | [treehill.mp4](results/treehill.mp4) | [treehill-al.mp4](results/treehill-al.mp4) |
 
 ### Aggregate Plots
 
@@ -425,10 +450,10 @@ average rather than a matched rerun.
 
 Per-signal report plots:
 
-![Color acquisition](results/psnr_vs_train_views_color_ci95.svg)
+![Color acquisition](results/psnr_vs_train_views_color_vs_uniform_ci95.svg)
 
-![Visibility acquisition](results/psnr_vs_train_views_visibility_ci95.svg)
+![Visibility acquisition](results/psnr_vs_train_views_visibility_vs_uniform_ci95.svg)
 
-![Conformal sensitivity acquisition](results/psnr_vs_train_views_sensitivity_ci95.svg)
+![Conformal sensitivity acquisition](results/psnr_vs_train_views_sensitivity_vs_uniform_ci95.svg)
 
-![Raw sensitivity acquisition](results/psnr_vs_train_views_raw_sensitivity_ci95.svg)
+![Raw sensitivity acquisition](results/psnr_vs_train_views_raw_sensitivity_vs_uniform_ci95.svg)

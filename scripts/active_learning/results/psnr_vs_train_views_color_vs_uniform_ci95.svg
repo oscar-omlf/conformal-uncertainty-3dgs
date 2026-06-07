@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1100" height="700" viewBox="0 0 1100 700">
 <style>text{font-family:Arial,Helvetica,sans-serif}.title{font-size:26px;font-weight:700}.label{font-size:18px}.tick{font-size:14px}.legend{font-size:15px}</style>
 <rect width="100%" height="100%" fill="white"/>
-<text x="550.0" y="38" text-anchor="middle" class="title">PSNR vs Training Views (Conformal color)</text>
+<text x="550.0" y="38" text-anchor="middle" class="title">PSNR vs Training Views (Conformal color vs Uniform)</text>
 <line x1="90" y1="615" x2="840" y2="615" stroke="#222" stroke-width="1.5"/>
 <line x1="90" y1="70" x2="90" y2="615" stroke="#222" stroke-width="1.5"/>
 <line x1="90.0" y1="70" x2="90.0" y2="615" stroke="#d0d0d0" stroke-opacity="0.55"/>
@@ -62,14 +62,36 @@
 <line x1="875" y1="90" x2="903" y2="90" stroke="#1f77b4" stroke-width="3.2"/>
 <circle cx="889" cy="90" r="4.5" fill="#1f77b4" stroke="white" stroke-width="1"/>
 <text x="913" y="95" class="legend">Conformal color</text>
-<line x1="90" y1="181.2" x2="840" y2="181.2" stroke="#111111" stroke-width="1.2" stroke-dasharray="4 4" stroke-opacity="0.45"/>
-<text x="840.0" y="188.2" text-anchor="middle" font-size="25" font-weight="700" fill="#111111" stroke="white" stroke-width="0.6">×</text>
-<text x="889" y="126" text-anchor="middle" font-size="22" font-weight="700" fill="#111111">×</text>
-<text x="913" y="123" class="legend">FisherRF avg. (20 views)</text>
-<line x1="90" y1="202.9" x2="840" y2="202.9" stroke="#e91e63" stroke-width="1.2" stroke-dasharray="4 4" stroke-opacity="0.45"/>
-<text x="840.0" y="209.9" text-anchor="middle" font-size="25" font-weight="700" fill="#e91e63" stroke="white" stroke-width="0.6">✚</text>
-<text x="889" y="154" text-anchor="middle" font-size="22" font-weight="700" fill="#e91e63">✚</text>
-<text x="913" y="151" class="legend">POP-GS avg. (20 views)</text>
+<polygon points="90.0,430.9 136.9,393.6 183.8,371.1 230.6,352.0 277.5,337.9 324.4,328.4 371.2,321.5 418.1,309.6 465.0,292.6 511.9,284.1 558.8,275.4 605.6,261.7 652.5,253.7 699.4,244.9 746.2,231.5 793.1,227.5 840.0,273.9 840.0,427.4 793.1,362.1 746.2,371.1 699.4,383.7 652.5,396.1 605.6,404.8 558.8,422.8 511.9,437.9 465.0,438.1 418.1,456.9 371.2,473.8 324.4,492.0 277.5,490.3 230.6,505.5 183.8,528.3 136.9,564.0 90.0,589.9" fill="rgba(126,87,194,0.14)" stroke="none"/>
+<polyline points="90.0,510.4 136.9,478.8 183.8,449.7 230.6,428.8 277.5,414.1 324.4,410.2 371.2,397.7 418.1,383.2 465.0,365.4 511.9,361.0 558.8,349.1 605.6,333.2 652.5,324.9 699.4,314.3 746.2,301.3 793.1,294.8 840.0,350.6" fill="none" stroke="#7e57c2" stroke-width="3.2"/>
+<circle cx="90.0" cy="510.4" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="136.9" cy="478.8" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="183.8" cy="449.7" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="230.6" cy="428.8" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="277.5" cy="414.1" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="324.4" cy="410.2" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="371.2" cy="397.7" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="418.1" cy="383.2" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="465.0" cy="365.4" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="511.9" cy="361.0" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="558.8" cy="349.1" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="605.6" cy="333.2" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="652.5" cy="324.9" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="699.4" cy="314.3" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="746.2" cy="301.3" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="793.1" cy="294.8" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<circle cx="840.0" cy="350.6" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<line x1="875" y1="118" x2="903" y2="118" stroke="#7e57c2" stroke-width="3.2"/>
+<circle cx="889" cy="118" r="4.5" fill="#7e57c2" stroke="white" stroke-width="1"/>
+<text x="913" y="123" class="legend">Uniform</text>
+<line x1="90" y1="202.9" x2="840" y2="202.9" stroke="#111111" stroke-width="1.2" stroke-dasharray="4 4" stroke-opacity="0.45"/>
+<text x="840.0" y="209.9" text-anchor="middle" font-size="25" font-weight="700" fill="#111111" stroke="white" stroke-width="0.6">×</text>
+<text x="889" y="154" text-anchor="middle" font-size="22" font-weight="700" fill="#111111">×</text>
+<text x="913" y="151" class="legend">FisherRF avg. (20 views)</text>
+<line x1="90" y1="152.2" x2="840" y2="152.2" stroke="#e91e63" stroke-width="1.2" stroke-dasharray="4 4" stroke-opacity="0.45"/>
+<text x="840.0" y="159.2" text-anchor="middle" font-size="25" font-weight="700" fill="#e91e63" stroke="white" stroke-width="0.6">✚</text>
+<text x="889" y="182" text-anchor="middle" font-size="22" font-weight="700" fill="#e91e63">✚</text>
+<text x="913" y="179" class="legend">POP-GS avg. (20 views)</text>
 <text x="835" y="605" text-anchor="end" class="tick" fill="#555">Shading: 95% CI across scenes</text>
 <text x="835" y="585" text-anchor="end" class="tick" fill="#555">FisherRF / POP-GS are Mip-NeRF360 averages</text>
 </svg>
