@@ -1,0 +1,251 @@
+#!/bin/bash
+#SBATCH --partition=gpu_h100
+#SBATCH --gres=gpu:1
+#SBATCH --gpus=1
+#SBATCH --cpus-per-task=8
+#SBATCH --job-name=cv2_tidi_generic
+#SBATCH --ntasks=1
+#SBATCH --time=04:00:00
+#SBATCH --mem=64000M
+#SBATCH --output=outfiles/tidi_generic_%A.out
+
+# Generic version of the Church (A)/(B)/(C) TIDI-GS-extension experiment for
+# any 3DGS-ready scene (i.e. one with sparse/0/ + an image directory).
+#
+# Required env vars at submit time:
+#   SCENE         : absolute path to scene root (must contain sparse/0/)
+#   IMAGES_SUBDIR : name of image subdir, e.g. "images_4" for MipNeRF360 outdoor
+# Optional env vars:
+#   OUT, ITERS, ALPHA, FIXED_K
+
+set -eu
+
+[ -z "${SCENE:-}" ] && { echo "ERROR: set SCENE=/path/to/scene"; exit 1; }
+[ -z "${IMAGES_SUBDIR:-}" ] && { echo "ERROR: set IMAGES_SUBDIR (e.g. images, images_4)"; exit 1; }
+
+OUTPUT_BASE="${OUTPUT_BASE:-/scratch-shared/$USER/output}"
+OUT="${OUT:-$OUTPUT_BASE/$(basename "$SCENE")}"
+ITERS="${ITERS:-30000}"
+ALPHA="${ALPHA:-0.1}"
+FIXED_K="${FIXED_K:-0.10}"
+export OUT ITERS ALPHA FIXED_K SCENE IMAGES_SUBDIR
+
+module purge
+module load 2025
+module load Anaconda3/2025.06-1
+module load CUDA/12.9.1
+export CUDA_HOME=$CUDA_ROOT
+export TORCH_CUDA_ARCH_LIST="8.0;9.0"
+
+cd $HOME/CV2/conformal-uncertainty-3dgs
+
+set +u
+eval "$(conda shell.bash hook)"
+conda activate gaussian_splatting
+set -u
+
+SPLIT_DIR="$OUT/splits"
+RUN_DIR="$OUT"
+OUTPUT_ROOT="$(dirname "$OUT")"
+mkdir -p "$OUT" "$SPLIT_DIR"
+
+echo "================================================================"
+echo "$(basename "$SCENE") — TIDI-GS extension comparison"
+echo "Scene  : $SCENE"
+echo "Images : $IMAGES_SUBDIR"
+echo "Output : $OUT"
+echo "Iters  : $ITERS"
+echo "Alpha  : $ALPHA"
+echo "Fixed K: $FIXED_K"
+echo "Start  : $(date)"
+echo "================================================================"
+
+python -c "
+from diff_gaussian_rasterization import GaussianRasterizer
+from simple_knn._C import distCUDA2
+print('rasterizer + simple_knn import OK')
+"
+
+# 0. COLMAP only if sparse/0 is missing
+if [ ! -d "$SCENE/sparse/0" ]; then
+    echo "[0] COLMAP: sparse/0 missing — running convert.py"
+    which colmap || { echo "ERROR: colmap not on PATH"; exit 1; }
+    python convert.py -s "$SCENE"
+    [ -d "$SCENE/sparse/0" ] && [ -d "$SCENE/images" ] || { echo "ERROR: convert.py did not produce sparse/0 or images"; exit 1; }
+fi
+
+# 1. split
+echo "[1/9] Preparing split manifests"
+python scripts/prepare_round_robin_split.py \
+    --source_path "$SCENE" \
+    --images "$IMAGES_SUBDIR" \
+    --output_dir "$SPLIT_DIR"
+
+# 2. train
+# Use a unique GUI port per job so concurrent jobs on the same node don't fight
+# over 6009 (3DGS's network_gui default).
+GUI_PORT=$(( 16009 + SLURM_JOB_ID % 30000 ))
+echo "[2/9] Training 3DGS (--port $GUI_PORT)"
+python train.py -s "$SCENE" -m "$OUT" --split_dir "$SPLIT_DIR" \
+    --iterations "$ITERS" --eval --images "$IMAGES_SUBDIR" --port "$GUI_PORT"
+
+# 3-5. 6 σ candidates
+echo "[3/9] Rendering color/depth/entropy σ"
+python scripts/render_color.py   -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train
+python scripts/render_depth.py   -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train
+python scripts/render_entropy.py -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train --top_k 4
+
+echo "[4/9] Sensitivity (PUP3DGS)"
+python scripts/compute_sensitivity.py -m "$OUT"
+python scripts/render_per_gaussian_scalar.py \
+    -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
+    --modality sensitivity --scores_path "$OUT/uncertainty/fishers.npz" \
+    --score_key fishers_log_dets --score_transform shift_positive
+
+echo "[5/9] Visibility (4DGS-W)"
+python scripts/compute_visibility.py -m "$OUT"
+python scripts/render_per_gaussian_scalar.py \
+    -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
+    --modality visibility --scores_path "$OUT/uncertainty/visibility.npz" \
+    --score_key uncertainty_log
+
+echo "[5b/9] Floater (baseline + v2 variant for pruning)"
+python scripts/compute_floater.py -m "$OUT"
+python scripts/render_per_gaussian_scalar.py \
+    -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
+    --modality floater --scores_path "$OUT/uncertainty/floater.npz" \
+    --score_key score_shifted
+
+python - <<PY
+import numpy as np
+from pathlib import Path
+import sys, os
+sys.path.insert(0, "scripts")
+from experiment_floater_variants import compute_variants
+OUT = os.environ["OUT"]
+d = np.load(f"{OUT}/uncertainty/floater.npz")
+variants = compute_variants(
+    np.asarray(d["spatial_isolation"], np.float32),
+    np.asarray(d["visibility"], np.float32),
+    np.asarray(d["opacity"], np.float32),
+)
+v2 = variants["v2_rank_mult"]
+v2_shifted = (v2 - float(v2.min()) + 1e-6).astype(np.float32)
+out = Path(f"{OUT}/uncertainty/floater_v2_for_prune.npz")
+np.savez_compressed(out, score=v2, score_shifted=v2_shifted)
+print(f"saved {out}")
+PY
+
+# 6. Conformal × 6
+echo "[6/9] Conformal × 6 modalities"
+for MOD in color depth entropy sensitivity visibility floater; do
+    echo "    -> $MOD"
+    python scripts/conformal_prediction.py --run_dir "$RUN_DIR" --modality "$MOD" \
+        --sigma_norm minmax_calib --alpha "$ALPHA" --calib_sample_ratio 0.1
+done
+
+# 7. (A) baseline metrics
+echo "[7/9] (A) baseline PSNR/SSIM/LPIPS"
+python metrics.py -m "$OUT"
+
+# 8. (B) fixed-K
+echo "[8/9] (B) fixed-K=${FIXED_K} pruning"
+B_OUT="$OUT/_prune_B_fixed_K${FIXED_K}"
+python scripts/prune_and_render.py \
+    -m "$OUT" --split_dir "$SPLIT_DIR" --iteration "$ITERS" \
+    --scores_npz "$OUT/uncertainty/floater_v2_for_prune.npz" --score_key score_shifted \
+    --prune_fraction "$FIXED_K" --output_dir "$B_OUT" \
+    --skip_calib
+python - <<PY
+from pathlib import Path
+import shutil, os
+B = Path(os.environ["OUT"]) / f"_prune_B_fixed_K{os.environ['FIXED_K']}"
+src = Path(os.environ["OUT"])
+for f in ("cfg_args", "cameras.json"):
+    p = src / f
+    if p.exists() and not (B / f).exists():
+        shutil.copy2(p, B / f)
+PY
+python metrics.py -m "$B_OUT"
+
+# 9. (C) conformal-K
+echo "[9/9] (C) conformal-calibrated K"
+python scripts/conformal_pick_pruning_K.py \
+    --model_path "$OUT" --split_dir "$SPLIT_DIR" --iteration "$ITERS" \
+    --scores_npz "$OUT/uncertainty/floater_v2_for_prune.npz" --score_key score_shifted \
+    --sigma_modality color --sigma_key color_std \
+    --K_grid "0.00,0.02,0.05,0.10,0.15,0.20" --alpha "$ALPHA"
+
+K_STAR=$(python -c "import json; print(json.load(open('$OUT/uncertainty/pruning_pick.json'))['K_star'])")
+echo "K* selected = $K_STAR"
+
+C_OUT="$OUT/_prune_C_Kstar_${K_STAR}"
+if [ "$(echo "$K_STAR > 0" | bc -l)" -eq 1 ]; then
+    python scripts/prune_and_render.py \
+        -m "$OUT" --split_dir "$SPLIT_DIR" --iteration "$ITERS" \
+        --scores_npz "$OUT/uncertainty/floater_v2_for_prune.npz" --score_key score_shifted \
+        --prune_fraction "$K_STAR" --output_dir "$C_OUT" \
+        --skip_calib
+    python - <<PY
+from pathlib import Path
+import shutil, os
+C = Path(f"{os.environ['OUT']}/_prune_C_Kstar_{os.environ.get('K_STAR_PY', '0')}")
+src = Path(os.environ["OUT"])
+for f in ("cfg_args", "cameras.json"):
+    p = src / f
+    if p.exists() and not (C / f).exists():
+        shutil.copy2(p, C / f)
+PY
+    python metrics.py -m "$C_OUT"
+else
+    echo "K* = 0 — config (C) identical to (A); skipping re-render."
+fi
+
+# Aggregate
+python - <<PY
+import json
+from pathlib import Path
+import os
+OUT = Path(os.environ["OUT"])
+K_STAR = json.load(open(OUT/"uncertainty/pruning_pick.json"))["K_star"]
+FIXED_K = os.environ["FIXED_K"]
+res = {}
+for tag, path in [
+    ("A_baseline", OUT/"results.json"),
+    (f"B_fixed_K{FIXED_K}", OUT/f"_prune_B_fixed_K{FIXED_K}/results.json"),
+    (f"C_conformal_K{K_STAR}", OUT/f"_prune_C_Kstar_{K_STAR}/results.json"),
+]:
+    if path.exists():
+        d = json.load(open(path))
+        method = list(d.keys())[0]
+        res[tag] = d[method]
+    else:
+        res[tag] = None
+
+print("=" * 78)
+print(f"{OUT.name} — TIDI-GS extension comparison")
+print("=" * 78)
+print(f"{'config':28} {'PSNR':>10} {'SSIM':>10} {'LPIPS':>10}")
+for tag, m in res.items():
+    if m is None:
+        print(f"{tag:28} (missing)")
+    else:
+        print(f"{tag:28} {m.get('PSNR',float('nan')):>10.4f} {m.get('SSIM',float('nan')):>10.4f} {m.get('LPIPS',float('nan')):>10.4f}")
+print(f"\nK* = {K_STAR}")
+
+out_md = OUT / "tidi_comparison.md"
+with open(out_md, "w") as f:
+    f.write(f"# {OUT.name} — TIDI-GS extension comparison\n\n")
+    f.write("| config | PSNR | SSIM | LPIPS |\n|---|---|---|---|\n")
+    for tag, m in res.items():
+        if m is None:
+            f.write(f"| {tag} | (missing) | | |\n")
+        else:
+            f.write(f"| {tag} | {m.get('PSNR',0):.4f} | {m.get('SSIM',0):.4f} | {m.get('LPIPS',0):.4f} |\n")
+    f.write(f"\nK* = {K_STAR}\n")
+print(f"Wrote {out_md}")
+PY
+
+echo "================================================================"
+echo "End: $(date)"
+echo "================================================================"

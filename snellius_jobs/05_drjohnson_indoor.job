@@ -1,42 +1,35 @@
 #!/bin/bash
-#SBATCH --partition=gpu_a100
+#SBATCH --partition=gpu_h100
 #SBATCH --gres=gpu:1
 #SBATCH --gpus=1
 #SBATCH --cpus-per-task=8
-#SBATCH --job-name=cv2_uncertainty
+#SBATCH --job-name=cv2_drjohnson
 #SBATCH --ntasks=1
-#SBATCH --time=04:00:00
+#SBATCH --time=02:30:00
 #SBATCH --mem=64000M
-#SBATCH --output=outfiles/uncertainty_%A.out
+#SBATCH --output=outfiles/drjohnson_%A.out
 
-# End-to-end uncertainty pipeline for one scene.
-# Submit with:   SCENE=/gpfs/home4/pkarageorgis/datasets/tandt/train sbatch snellius_jobs/01_full_pipeline.job
-# Optional env: OUT, ITERS, ALPHA
+# Full pipeline + floater-variant ablation + sigma-combination experiment on
+# db/drjohnson (indoor Deep Blending scene, 263 photos). Tests whether
+# floater-style signals matter more in scenes where floaters are common.
 
 set -eu
 
-if [ -z "${SCENE:-}" ]; then
-    echo "ERROR: set SCENE=/path/to/scene"
-    exit 1
-fi
-
+SCENE="${SCENE:-/gpfs/home4/pkarageorgis/datasets/db/drjohnson}"
 OUTPUT_BASE="${OUTPUT_BASE:-/scratch-shared/$USER/output}"
-OUT="${OUT:-$OUTPUT_BASE/$(basename "$SCENE")}"
+OUT="${OUT:-$OUTPUT_BASE/drjohnson}"
 ITERS="${ITERS:-30000}"
 ALPHA="${ALPHA:-0.1}"
 
 module purge
 module load 2025
 module load Anaconda3/2025.06-1
-
 module load CUDA/12.9.1
 export CUDA_HOME=$CUDA_ROOT
-export TORCH_CUDA_ARCH_LIST="8.0"
+export TORCH_CUDA_ARCH_LIST="8.0;9.0"
 
 cd $HOME/CV2/conformal-uncertainty-3dgs
 
-# Properly initialize conda for non-interactive bash
-# Temporarily disable 'set -u' to avoid unbound variable errors in conda activation
 set +u
 eval "$(conda shell.bash hook)"
 conda activate gaussian_splatting
@@ -49,48 +42,46 @@ OUTPUT_ROOT="$(dirname "$OUT")"
 mkdir -p "$OUT" "$SPLIT_DIR"
 
 echo "================================================================"
-echo "Scene      : $SCENE"
-echo "Output     : $OUT"
-echo "Iterations : $ITERS"
-echo "Alpha      : $ALPHA"
-echo "Host       : $(hostname)"
-echo "Start      : $(date)"
+echo "drjohnson — full pipeline + floater ablation + sigma combination"
+echo "Scene  : $SCENE"
+echo "Output : $OUT"
+echo "Iters  : $ITERS"
+echo "Alpha  : $ALPHA"
+echo "Host   : $(hostname)"
+echo "Start  : $(date)"
 echo "================================================================"
 
-# Skip pip install for submodules - they're pre-installed in the conda environment
-# If needed, they can be reinstalled with: pip install --no-build-isolation submodules/NAME
+# Submodules were already rebuilt + dr_aa-patched on H100 for the tandt run.
+# Confirm they still import.
+python -c "
+from diff_gaussian_rasterization import GaussianRasterizer
+from simple_knn._C import distCUDA2
+print('rasterizer + simple_knn import OK')
+"
 
-# if ! python -c "import diff_gaussian_rasterization, simple_knn, fused_ssim" 2>/dev/null; then
-#     echo "[setup] Building submodules ..."
-#     pip install --no-build-isolation submodules/diff-gaussian-rasterization
-#     pip install --no-build-isolation submodules/simple-knn
-#     pip install --no-build-isolation submodules/fused-ssim
-# fi
-
-# 1. Round-robin train/calib/test split
-echo "[1/9] Preparing split manifests"
+# 1. Split
+echo "[1/11] Preparing split manifests"
 python scripts/prepare_round_robin_split.py \
     --source_path "$SCENE" \
     --images images \
     --output_dir "$SPLIT_DIR"
 
 # 2. Train 3DGS on train.txt only
-echo "[2/9] Training 3DGS"
+echo "[2/11] Training 3DGS"
 python train.py -s "$SCENE" -m "$OUT" --split_dir "$SPLIT_DIR" --iterations "$ITERS" --eval
 
-# 3. Render color/depth raw sigma artifacts
-echo "[3/9] Rendering color sigma"
+# 3-5. 2D σ candidates
+echo "[3/11] Rendering color sigma"
 python scripts/render_color.py -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train
 
-echo "[4/9] Rendering depth sigma"
+echo "[4/11] Rendering depth sigma"
 python scripts/render_depth.py -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train
 
-# 4. Top-K entropy
-echo "[5/9] Rendering entropy (top-K weights)"
+echo "[5/11] Rendering entropy (top-K weights)"
 python scripts/render_entropy.py -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train --top_k 4
 
-# 5. Fisher sensitivity (compute then render)
-echo "[6/9] Computing Fisher sensitivity (PUP3DGS)"
+# 6-8. 3D σ candidates
+echo "[6/11] Computing Fisher sensitivity (PUP3DGS)"
 python scripts/compute_sensitivity.py -m "$OUT"
 python scripts/render_per_gaussian_scalar.py \
     -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
@@ -99,8 +90,7 @@ python scripts/render_per_gaussian_scalar.py \
     --score_key fishers_log_dets \
     --score_transform shift_positive
 
-# 6. Visibility (compute then render)
-echo "[7/9] Computing visibility (4DGS-W)"
+echo "[7/11] Computing visibility (4DGS-W)"
 python scripts/compute_visibility.py -m "$OUT"
 python scripts/render_per_gaussian_scalar.py \
     -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
@@ -108,8 +98,7 @@ python scripts/render_per_gaussian_scalar.py \
     --scores_path "$OUT/uncertainty/visibility.npz" \
     --score_key uncertainty_log
 
-# 7. Floater likelihood (composite of isolation / visibility / opacity)
-echo "[8/9] Computing floater likelihood (TIDI-GS-inspired)"
+echo "[8/11] Computing floater likelihood (TIDI-GS-inspired, baseline + variants)"
 python scripts/compute_floater.py -m "$OUT"
 python scripts/render_per_gaussian_scalar.py \
     -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
@@ -117,8 +106,8 @@ python scripts/render_per_gaussian_scalar.py \
     --scores_path "$OUT/uncertainty/floater.npz" \
     --score_key score_shifted
 
-# 8. Conformal prediction for every modality
-echo "[9/9] Conformal prediction across modalities"
+# 9. Conformal across the 6 base modalities
+echo "[9/11] Conformal prediction across 6 modalities"
 for MOD in color depth entropy sensitivity visibility floater; do
     echo "    -> $MOD"
     python scripts/conformal_prediction.py \
@@ -129,14 +118,31 @@ for MOD in color depth entropy sensitivity visibility floater; do
         --calib_sample_ratio 0.1
 done
 
-# 8. Aggregate
-echo "[done] Exporting active-learning rankings"
-python scripts/active_learning/export_rankings.py --run_dir "$RUN_DIR" --sigma_norm minmax_calib --score_top_fraction 0.10
+# 10. Floater-score variant ablation (6 variants — the v0 baseline plus 5 alternatives)
+echo "[10/11] Floater-score variant ablation"
+python scripts/experiment_floater_variants.py \
+    --model_path "$OUT" \
+    --run_dir "$OUT" \
+    --iteration "$ITERS" \
+    --alpha "$ALPHA" \
+    --seed 42
 
+# 11. Color × floater × visibility combination experiment
+echo "[11/11] σ-combination experiment (color × floater × visibility)"
+python scripts/experiment_combine_sigmas.py \
+    --run_dir "$OUT" \
+    --iteration "$ITERS" \
+    --alpha "$ALPHA" \
+    --seed 42
+
+# Aggregate the base table
 echo "[done] Aggregating results"
 python scripts/aggregate_results.py --run_dir "$RUN_DIR"
 
 echo "================================================================"
-echo "Pipeline complete. Results: $RUN_DIR/results.md"
+echo "Pipeline complete. Inspect:"
+echo "  $RUN_DIR/results.md"
+echo "  $RUN_DIR/uncertainty/floater_variants/results.json"
+echo "  $RUN_DIR/uncertainty/combine_sigmas_results.json"
 echo "End: $(date)"
 echo "================================================================"

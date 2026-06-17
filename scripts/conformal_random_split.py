@@ -29,6 +29,7 @@ DEFAULT_SIGMA_KEYS = {
     "entropy": "entropy",
     "sensitivity": "sigma_mean",
     "visibility": "sigma_mean",
+    "floater": "sigma_mean",
 }
 
 

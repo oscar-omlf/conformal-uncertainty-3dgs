@@ -1,0 +1,267 @@
+#!/bin/bash
+#SBATCH --partition=gpu_h100
+#SBATCH --gres=gpu:1
+#SBATCH --gpus=1
+#SBATCH --cpus-per-task=8
+#SBATCH --job-name=cv2_church_tidi
+#SBATCH --ntasks=1
+#SBATCH --time=03:00:00
+#SBATCH --mem=64000M
+#SBATCH --output=outfiles/church_tidi_%A.out
+
+# Church (T&T) end-to-end pipeline + TIDI-GS-style pruning comparison.
+#
+# Configurations measured (PSNR/SSIM/LPIPS):
+#   (A) baseline 3DGS                            : default train + render + metrics
+#   (B) TIDI-GS-style post-hoc pruning (fixed K) : prune top-K%, re-render, metrics
+#   (C) conformal-calibrated pruning             : sweep K on calib, pick K* that
+#                                                  maximizes calib PSNR subject to
+#                                                  coverage(calib, K) >= 1-alpha;
+#                                                  then render+metrics at K*.
+#
+# Also runs the full 6-modality conformal table for Church for the broader
+# σ-comparison story.
+
+set -eu
+
+SCENE="${SCENE:-/scratch-shared/$USER/datasets/Church_scene}"
+OUTPUT_BASE="${OUTPUT_BASE:-/scratch-shared/$USER/output}"
+OUT="${OUT:-$OUTPUT_BASE/Church}"
+ITERS="${ITERS:-30000}"
+ALPHA="${ALPHA:-0.1}"
+FIXED_K="${FIXED_K:-0.10}"  # the "TIDI-GS hand-tuned" K for config (B)
+export OUT ITERS ALPHA FIXED_K SCENE  # so inline python heredocs can read them
+
+module purge
+module load 2025
+module load Anaconda3/2025.06-1
+module load CUDA/12.9.1
+export CUDA_HOME=$CUDA_ROOT
+export TORCH_CUDA_ARCH_LIST="8.0;9.0"
+
+cd $HOME/CV2/conformal-uncertainty-3dgs
+
+set +u
+eval "$(conda shell.bash hook)"
+conda activate gaussian_splatting
+set -u
+
+SPLIT_DIR="$OUT/splits"
+RUN_DIR="$OUT"
+OUTPUT_ROOT="$(dirname "$OUT")"
+mkdir -p "$OUT" "$SPLIT_DIR"
+
+echo "================================================================"
+echo "Church — TIDI-GS comparison"
+echo "Scene  : $SCENE"
+echo "Output : $OUT"
+echo "Iters  : $ITERS"
+echo "Alpha  : $ALPHA"
+echo "Fixed K (for config B): $FIXED_K"
+echo "Start  : $(date)"
+echo "================================================================"
+
+# Confirm imports
+python -c "
+from diff_gaussian_rasterization import GaussianRasterizer
+from simple_knn._C import distCUDA2
+print('rasterizer + simple_knn import OK')
+"
+
+# 0. COLMAP: run convert.py if sparse/0 missing (uses conda env's colmap)
+if [ ! -d "$SCENE/sparse/0" ]; then
+    echo "[0/8] Running COLMAP via convert.py (one-time, ~15-30 min on H100)"
+    which colmap || { echo "ERROR: colmap not on PATH in the conda env"; exit 1; }
+    python convert.py -s "$SCENE"
+    # 3DGS convert.py wraps colmap in os.system() and logs-but-exits-0 on failure.
+    # Explicit guard: ensure both sparse/0/ and images/ exist before continuing.
+    if [ ! -d "$SCENE/sparse/0" ] || [ ! -d "$SCENE/images" ]; then
+        echo "ERROR: convert.py did not produce $SCENE/sparse/0 or $SCENE/images. Aborting."
+        ls -la "$SCENE"
+        exit 1
+    fi
+    echo "[0/8] COLMAP complete."
+fi
+
+# 1. split
+echo "[1/8] Preparing split manifests"
+python scripts/prepare_round_robin_split.py \
+    --source_path "$SCENE" \
+    --images images \
+    --output_dir "$SPLIT_DIR"
+
+# 2. train baseline
+echo "[2/8] Training baseline 3DGS"
+python train.py -s "$SCENE" -m "$OUT" --split_dir "$SPLIT_DIR" --iterations "$ITERS" --eval
+
+# 3-5. 6 σ candidates
+echo "[3/8] Rendering color/depth/entropy σ"
+python scripts/render_color.py    -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train
+python scripts/render_depth.py    -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train
+python scripts/render_entropy.py  -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train --top_k 4
+
+echo "[4/8] Computing + rendering sensitivity (PUP3DGS)"
+python scripts/compute_sensitivity.py -m "$OUT"
+python scripts/render_per_gaussian_scalar.py \
+    -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
+    --modality sensitivity --scores_path "$OUT/uncertainty/fishers.npz" \
+    --score_key fishers_log_dets --score_transform shift_positive
+
+echo "[5/8] Computing + rendering visibility (4DGS-W)"
+python scripts/compute_visibility.py -m "$OUT"
+python scripts/render_per_gaussian_scalar.py \
+    -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
+    --modality visibility --scores_path "$OUT/uncertainty/visibility.npz" \
+    --score_key uncertainty_log
+
+echo "[5b/8] Computing floater (and v2 variant for pruning)"
+python scripts/compute_floater.py -m "$OUT"
+python scripts/render_per_gaussian_scalar.py \
+    -m "$OUT" --split_dir "$SPLIT_DIR" --output_root "$OUTPUT_ROOT" --skip_train \
+    --modality floater --scores_path "$OUT/uncertainty/floater.npz" \
+    --score_key score_shifted
+
+# Quick standalone v2 variant for the pruning step.
+python - <<'PY'
+import numpy as np
+from pathlib import Path
+import sys
+sys.path.insert(0, "scripts")
+from experiment_floater_variants import compute_variants
+import os
+OUT = os.environ["OUT"]
+d = np.load(f"{OUT}/uncertainty/floater.npz")
+variants = compute_variants(
+    np.asarray(d["spatial_isolation"], np.float32),
+    np.asarray(d["visibility"], np.float32),
+    np.asarray(d["opacity"], np.float32),
+)
+v2 = variants["v2_rank_mult"]
+v2_shifted = (v2 - float(v2.min()) + 1e-6).astype(np.float32)
+out = Path(f"{OUT}/uncertainty/floater_v2_for_prune.npz")
+np.savez_compressed(out, score=v2, score_shifted=v2_shifted)
+print(f"saved {out}")
+PY
+
+# 6. baseline conformal table for all 6 modalities
+echo "[6/8] Conformal across 6 modalities (baseline / config A)"
+for MOD in color depth entropy sensitivity visibility floater; do
+    echo "    -> $MOD"
+    python scripts/conformal_prediction.py --run_dir "$RUN_DIR" --modality "$MOD" \
+        --sigma_norm minmax_calib --alpha "$ALPHA" --calib_sample_ratio 0.1
+done
+
+# 7. (A) baseline PSNR/SSIM/LPIPS
+echo "[7/8] (A) baseline metrics on test/"
+python metrics.py -m "$OUT"
+
+# 8a. (B) TIDI-GS-style fixed-K pruning
+echo "[8a/8] (B) fixed-K pruning (K=$FIXED_K)"
+B_OUT="$OUT/_prune_B_fixed_K${FIXED_K}"
+python scripts/prune_and_render.py \
+    -m "$OUT" --split_dir "$SPLIT_DIR" --iteration "$ITERS" \
+    --scores_npz "$OUT/uncertainty/floater_v2_for_prune.npz" --score_key score_shifted \
+    --prune_fraction "$FIXED_K" --output_dir "$B_OUT" \
+    --skip_calib
+
+# To run metrics.py the layout has to be model_path/test/<method>/{render,gt}/.
+# Reuse trained model meta files by symlinking train output into the prune dir.
+python - <<PY
+from pathlib import Path
+import shutil
+B = Path("$B_OUT")
+src = Path("$OUT")
+for f in ("cfg_args", "cameras.json"):
+    p = src / f
+    if p.exists() and not (B / f).exists():
+        shutil.copy2(p, B / f)
+print("copied meta files into", B)
+PY
+python metrics.py -m "$B_OUT"
+
+# 8b. (C) Conformal-calibrated pruning
+echo "[8b/8] (C) conformal-calibrated pruning"
+python scripts/conformal_pick_pruning_K.py \
+    --model_path "$OUT" \
+    --split_dir "$SPLIT_DIR" \
+    --iteration "$ITERS" \
+    --scores_npz "$OUT/uncertainty/floater_v2_for_prune.npz" \
+    --score_key score_shifted \
+    --sigma_modality color --sigma_key color_std \
+    --K_grid "0.00,0.02,0.05,0.10,0.15,0.20" \
+    --alpha "$ALPHA"
+
+K_STAR=$(python -c "import json; print(json.load(open('$OUT/uncertainty/pruning_pick.json'))['K_star'])")
+echo "K* selected = $K_STAR"
+
+C_OUT="$OUT/_prune_C_Kstar_${K_STAR}"
+if [ "$(echo "$K_STAR > 0" | bc -l)" -eq 1 ]; then
+    python scripts/prune_and_render.py \
+        -m "$OUT" --split_dir "$SPLIT_DIR" --iteration "$ITERS" \
+        --scores_npz "$OUT/uncertainty/floater_v2_for_prune.npz" --score_key score_shifted \
+        --prune_fraction "$K_STAR" --output_dir "$C_OUT" \
+        --skip_calib
+    python - <<PY
+from pathlib import Path
+import shutil
+C = Path("$C_OUT")
+src = Path("$OUT")
+for f in ("cfg_args", "cameras.json"):
+    p = src / f
+    if p.exists() and not (C / f).exists():
+        shutil.copy2(p, C / f)
+print("copied meta files into", C)
+PY
+    python metrics.py -m "$C_OUT"
+else
+    echo "K* = 0 — config (C) identical to (A); skipping re-render."
+fi
+
+# Aggregate final comparison
+python - <<PY
+import json
+from pathlib import Path
+
+OUT = Path("$OUT")
+res = {}
+for tag, path in [("A_baseline", OUT/"results.json"),
+                  ("B_fixed_K", Path("$B_OUT")/"results.json"),
+                  ("C_conformal_K", Path("$C_OUT")/"results.json")]:
+    if path.exists():
+        d = json.load(open(path))
+        # results.json has {method_name: {PSNR, SSIM, LPIPS}}
+        # take the only method
+        method = list(d.keys())[0]
+        res[tag] = d[method]
+    else:
+        res[tag] = None
+
+print("=" * 78)
+print("Church — TIDI-GS comparison")
+print("=" * 78)
+print(f"{'config':22} {'PSNR':>10} {'SSIM':>10} {'LPIPS':>10}")
+for tag, m in res.items():
+    if m is None:
+        print(f"{tag:22} (missing)")
+    else:
+        print(f"{tag:22} {m.get('PSNR',float('nan')):>10.4f} {m.get('SSIM',float('nan')):>10.4f} {m.get('LPIPS',float('nan')):>10.4f}")
+
+pp = json.load(open(OUT/"uncertainty/pruning_pick.json"))
+print(f"\nK* = {pp['K_star']}, target coverage = {pp['target_coverage']}")
+
+out_md = OUT/"tidi_comparison.md"
+with open(out_md, "w") as f:
+    f.write(f"# Church — TIDI-GS comparison\n\n")
+    f.write(f"| config | PSNR | SSIM | LPIPS |\n|---|---|---|---|\n")
+    for tag, m in res.items():
+        if m is None:
+            f.write(f"| {tag} | (missing) | | |\n")
+        else:
+            f.write(f"| {tag} | {m.get('PSNR',0):.4f} | {m.get('SSIM',0):.4f} | {m.get('LPIPS',0):.4f} |\n")
+    f.write(f"\nK* = {pp['K_star']} (chosen on calib via PSNR-improvement subject to coverage >= {pp['target_coverage']}).\n")
+print(f"\nWrote {out_md}")
+PY
+
+echo "================================================================"
+echo "End: $(date)"
+echo "================================================================"
